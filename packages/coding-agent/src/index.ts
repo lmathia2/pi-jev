@@ -359,6 +359,18 @@ export {
 	type ProjectTrustStoreEntry,
 	type ProjectTrustUpdate,
 } from "./core/trust-manager.ts";
+export {
+	createJevClient,
+	createJevShadowExtension,
+	decideJevRoute,
+	JEV_ROUTE_IDS,
+	type JevFailure,
+	type JevRouteDecision,
+	type JevRouteId,
+	type JevRouteResult,
+	type JevShadowOptions,
+	type JevShadowRecord,
+} from "./jev/index.ts";
 // Main entry point
 export { type MainOptions, main } from "./main.ts";
 // Run modes for programmatic SDK usage
