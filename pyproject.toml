@@ -1,0 +1,11 @@
+[project]
+name = "pi-jev-router"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = ["playwright", "typesafe-sdk"]
+
+[project.optional-dependencies]
+gliner = [
+    "gliner2[local]",
+    "protobuf>=7.36.2",
+]

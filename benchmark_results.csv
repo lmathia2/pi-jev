@@ -1,0 +1,41 @@
+backend,task,expected,predicted,confidence,latency_ms,input_tokens
+jev,Open pricing,1,1,1.0,195.41008304804564,410
+jev,Search for a flight,2,2,0.96,116.27354216761887,412
+jev,Enter the destination city,1,1,1.0,88.10054208151996,418
+jev,Continue to checkout,3,3,1.0,106.96329106576741,409
+jev,Download the invoice,2,2,1.0,77.44587492197752,413
+jev,Accept the cookie settings,2,2,0.99,128.98749997839332,412
+jev,Create a new project,1,1,1.0,133.63012485206127,408
+jev,Sign out of the account,3,3,1.0,71.20241713710129,409
+jev,Filter results by newest,2,2,1.0,161.50462510995567,414
+jev,Send the completed message,3,3,1.0,80.14237508177757,410
+jev,Open accessibility settings,2,2,1.0,108.69808285497129,405
+jev,Go back to the previous page,2,2,1.0,183.41337516903877,412
+jev,Add this item to favorites,2,2,1.0,126.85012491419911,411
+jev,Select business class,2,2,1.0,147.02370786108077,413
+jev,View the full documentation,3,3,1.0,1515.0854159146547,418
+jev,Cancel editing without saving,2,2,1.0,89.61849985644221,406
+jev,Invite a teammate,2,2,1.0,142.09058391861618,409
+jev,Expand advanced options,2,2,1.0,362.77633416466415,407
+jev,Play the demonstration video,2,2,1.0,152.95441588386893,416
+jev,Return to the dashboard,1,1,1.0,85.17670794390142,406
+gliner,Open pricing,1,1,0.9969587326049805,43.514874996617436,0
+gliner,Search for a flight,2,2,0.8900942802429199,23.63370917737484,0
+gliner,Enter the destination city,1,1,0.9557613134384155,21.179249975830317,0
+gliner,Continue to checkout,3,0,0.6904870271682739,22.115084109827876,0
+gliner,Download the invoice,2,2,0.9999923706054688,21.341999992728233,0
+gliner,Accept the cookie settings,2,2,0.9634067416191101,22.298000054433942,0
+gliner,Create a new project,1,1,0.9999152421951294,21.75241708755493,0
+gliner,Sign out of the account,3,3,0.9985536932945251,21.30399993620813,0
+gliner,Filter results by newest,2,2,0.9712745547294617,21.5763330925256,0
+gliner,Send the completed message,3,3,0.9792906641960144,21.65129198692739,0
+gliner,Open accessibility settings,2,2,0.9997207522392273,23.3105409424752,0
+gliner,Go back to the previous page,2,2,0.9984709620475769,23.151708068326116,0
+gliner,Add this item to favorites,2,2,0.9969366788864136,23.355457931756973,0
+gliner,Select business class,2,2,0.9009358286857605,23.626874899491668,0
+gliner,View the full documentation,3,3,0.9999957084655762,24.154959013685584,0
+gliner,Cancel editing without saving,2,2,0.9979279041290283,23.301957873627543,0
+gliner,Invite a teammate,2,2,0.9889653921127319,28.38962501846254,0
+gliner,Expand advanced options,2,2,0.9999887943267822,24.651459185406566,0
+gliner,Play the demonstration video,2,2,0.9998618364334106,23.680707905441523,0
+gliner,Return to the dashboard,1,1,0.9987571239471436,23.51770899258554,0

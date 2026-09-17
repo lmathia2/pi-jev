@@ -1,0 +1,25 @@
+{
+  "steps": [
+    {
+      "id": "route",
+      "type": "choice",
+      "instructions": "Which workflow should handle `input`?",
+      "criteria": {
+        "code": "Implement, debug, test, or review software.",
+        "research": "Find, compare, verify, or summarize information.",
+        "other": "Neither code work nor research."
+      }
+    },
+    {
+      "id": "ready",
+      "type": "noul",
+      "instructions": "Does `input` contain enough information to begin without asking a clarifying question?"
+    },
+    {
+      "id": "check",
+      "type": "command",
+      "when": {"route": "code"},
+      "argv": ["uv", "run", "route.py", "--check"]
+    }
+  ]
+}

@@ -1,0 +1,81 @@
+expected,predicted,confidence,correct,query
+code,code,0.93,True,Fix the flaky login test.
+code,code,0.87,True,Why does this Python generator stop after the first yield?
+code,code,0.9,True,Add cursor pagination to the existing users endpoint without changing its response shape.
+code,code,0.89,True,Review this pull request for race conditions and leave concise findings.
+code,code,0.96,True,Convert the callback-based image loader to async/await and preserve cancellation.
+code,code,0.97,True,The build passes locally but fails on Linux because file names differ only by case; diagnose it.
+code,code,0.98,True,Write a SQL migration that makes email unique while safely reporting existing duplicates.
+code,code,0.85,True,Can you reduce this React component's rerenders without adding another state library?
+code,code,0.96,True,Trace the checkout request from the route through the service and explain where tax is rounded.
+code,code,0.99,True,"Implement webhook signature verification, reject stale timestamps, and add one focused test."
+research,research,1.0,True,Who invented the lithium-ion battery?
+research,research,1.0,True,Find the current limits for GitHub Actions hosted runners and cite the official docs.
+research,research,1.0,True,Compare the evidence for creatine improving cognition in sleep-deprived adults.
+research,research,0.76,True,Verify whether this quote is actually in the 2018 shareholder letter.
+research,research,0.99,True,"Summarize the latest three papers on small language model routing, noting dataset sizes."
+research,research,0.99,True,What changed between the two most recent versions of the WebAuthn specification?
+research,research,1.0,True,Find primary sources for urban heat-island mitigation and separate measured results from projections.
+research,research,1.0,True,Research competitors offering usage-based billing APIs for European SaaS companies.
+research,research,0.98,True,"Is the claim that octopuses have nine brains accurate, and what do biologists actually mean?"
+research,research,0.85,True,Locate the original dataset behind this chart and assess whether the caption matches it.
+data,data,0.83,True,Calculate monthly churn from this CSV.
+data,data,0.96,True,Plot conversion rate by acquisition channel with 95% confidence intervals.
+data,data,0.9,True,"Join the orders and refunds sheets, then flag customers whose net revenue is negative."
+data,data,0.83,True,Explain why the median rose while every regional median fell.
+data,data,0.56,True,"Clean these timestamps, group events into sessions after 30 minutes of inactivity, and export Parquet."
+data,data,0.86,True,Build a cohort table showing week-eight retention for each signup month.
+data,data,0.78,True,"Which variables best predict late delivery, and are any of them likely leakage?"
+data,data,0.92,True,"Compare forecast error by store, excluding locations with fewer than twenty observations."
+data,data,0.75,True,The dashboard total differs from finance by 2.4%; reconcile the definitions and identify the rows.
+data,data,0.71,True,"Run a sensitivity analysis on the break-even model across price, demand, and support cost assumptions."
+write,write,0.62,True,Rewrite this paragraph more clearly.
+write,communicate,1.0,False,Draft a friendly onboarding email for trial users who have not invited a teammate.
+write,write,0.94,True,Translate the release notes into German while leaving command names unchanged.
+write,write,0.93,True,Turn these rough notes into a one-page executive brief with a direct recommendation.
+write,write,0.93,True,Edit this grant proposal for flow and remove claims that are not supported by the cited results.
+write,write,1.0,True,Write three headline options for a privacy-focused photo app; avoid fear-based language.
+write,write,0.92,True,Condense the incident report to 200 words without dropping the timeline or customer impact.
+write,write,0.67,True,Adapt this technical tutorial for product managers who understand APIs but do not code.
+write,write,0.89,True,"Create an FAQ from the policy text, quoting the policy only when exact wording matters."
+write,communicate,0.83,False,"Make this apology sound accountable rather than defensive, and do not promise a delivery date."
+plan,plan,0.84,True,Plan a two-day team offsite.
+plan,plan,0.99,True,Break the billing migration into reversible phases with acceptance criteria.
+plan,plan,1.0,True,Design a six-week study plan for someone who knows Python but not linear algebra.
+plan,plan,0.99,True,Propose an architecture for processing ten million events daily with regional failover.
+plan,plan,0.78,True,"Create a launch checklist that assigns owners across engineering, support, legal, and marketing."
+plan,plan,0.96,True,We need to cut cloud cost by 20% without hurting latency; prioritize experiments for the next month.
+plan,plan,0.96,True,Map a safe rollout from shared admin passwords to hardware-backed single sign-on.
+plan,plan,0.96,True,Outline how to validate product demand before committing a full engineering team.
+plan,plan,0.99,True,"Schedule the kitchen renovation so plumbing, electrical, cabinets, and inspections do not block each other."
+plan,plan,1.0,True,Develop a contingency plan for a conference if the keynote cancels on the morning of the event.
+act,act,0.95,True,Create a reminder for Friday at 4 PM.
+act,act,0.97,True,Deploy the current main branch to staging and show me the health check.
+act,act,0.52,True,Book the cheapest refundable nonstop flight to Seattle next Tuesday afternoon.
+act,act,0.79,True,"Add every customer in this CSV to the product-announcement audience, excluding unsubscribed users."
+act,act,0.95,True,Open an issue for the memory leak and attach the heap profile.
+act,act,0.94,True,Rename the task to Quarterly access review and pin it.
+act,act,0.97,True,"Run the database backup, verify its checksum, then rotate backups older than thirty days."
+act,act,0.93,True,Update the CRM opportunity to closed-won and schedule a handoff with customer success.
+act,act,0.9,True,Monitor the status page every fifteen minutes and notify me only if the incident changes.
+act,act,0.82,True,"Generate invoices for approved time entries, but stop and report any account without a tax ID."
+communicate,communicate,0.98,True,Tell Maya I'll be ten minutes late.
+communicate,communicate,1.0,True,Draft a reply asking the vendor to clarify whether support is included in year two.
+communicate,communicate,0.71,True,"Summarize this meeting and list each decision, owner, and due date."
+communicate,communicate,0.99,True,Prepare talking points for explaining the delay to a frustrated enterprise customer.
+communicate,communicate,1.0,True,"Write a concise status update for Slack: the fix is deployed, monitoring is clean, and no action is needed."
+communicate,communicate,1.0,True,Help me decline this speaking invitation warmly while leaving the door open for next year.
+communicate,communicate,0.95,True,Create an agenda for the design review and include the unresolved accessibility questions.
+communicate,communicate,0.81,True,Turn this tense email thread into a neutral summary I can send to both teams.
+communicate,communicate,0.91,True,Follow up with interview candidates who have been waiting more than five business days.
+communicate,communicate,0.97,True,"Compose a handoff note for the on-call engineer covering impact, mitigations, and what to watch overnight."
+clarify,clarify,1.0,True,Help me with it.
+clarify,clarify,1.0,True,What do you think?
+clarify,clarify,0.98,True,Make it better.
+clarify,clarify,0.99,True,Can you handle the thing we discussed yesterday?
+clarify,clarify,0.95,True,"Do the next step, but do not change anything important."
+clarify,clarify,0.85,True,I need something for the board by tomorrow.
+clarify,clarify,0.99,True,Take a look at this.
+clarify,clarify,0.73,True,It stopped working after the update.
+clarify,clarify,0.92,True,We should probably deal with the customer situation.
+clarify,clarify,0.95,True,Use the best approach and let me know when it is done.
