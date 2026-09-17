@@ -1,0 +1,95 @@
+{
+	"schemaVersion": 1,
+	"scenarios": [
+		{
+			"id": "coding-local-fix",
+			"category": "coding",
+			"task": "Find the cause of a focused TypeScript regression, implement the smallest fix, and run its focused test.",
+			"labels": {
+				"route": "standard",
+				"requiredCapabilities": ["repository_search", "file_edit", "focused_test"],
+				"requiresResearch": false
+			}
+		},
+		{
+			"id": "coding-cross-package-change",
+			"category": "coding",
+			"task": "Trace a behavior across two workspace packages, update the shared boundary, and preserve both callers.",
+			"labels": {
+				"route": "deep",
+				"requiredCapabilities": ["repository_search", "file_edit", "focused_test", "workspace_check"],
+				"requiresResearch": false
+			}
+		},
+		{
+			"id": "tool-heavy-recovery",
+			"category": "tool_heavy",
+			"task": "Diagnose a failing command, inspect generated artifacts, apply a fix, and verify recovery without repeating unsafe effects.",
+			"labels": {
+				"route": "deep",
+				"requiredCapabilities": ["shell", "repository_search", "file_edit", "focused_test"],
+				"requiresResearch": false
+			}
+		},
+		{
+			"id": "tool-heavy-read-only",
+			"category": "tool_heavy",
+			"task": "Inspect repository status, configuration, and test output, then report the root cause without changing files.",
+			"labels": {
+				"route": "standard",
+				"requiredCapabilities": ["shell", "repository_search"],
+				"requiresResearch": false
+			}
+		},
+		{
+			"id": "repository-symbol-trace",
+			"category": "repository_research",
+			"task": "Trace a public API from declaration through every production caller and identify the durable state it changes.",
+			"labels": {
+				"route": "deep",
+				"requiredCapabilities": ["repository_search", "symbol_trace"],
+				"requiresResearch": false
+			}
+		},
+		{
+			"id": "repository-design-review",
+			"category": "repository_research",
+			"task": "Compare a proposed extension point with existing hooks and explain whether a core change is necessary.",
+			"labels": {
+				"route": "deep",
+				"requiredCapabilities": ["repository_search", "architecture_review"],
+				"requiresResearch": false
+			}
+		},
+		{
+			"id": "research-primary-sources",
+			"category": "deep_research",
+			"task": "Answer a technical integration question using official documentation and primary source repositories, with citations for each material claim.",
+			"labels": {
+				"route": "research",
+				"requiredCapabilities": ["web_research", "source_ranking", "citation_verification"],
+				"requiresResearch": true
+			}
+		},
+		{
+			"id": "research-contradictory-evidence",
+			"category": "deep_research",
+			"task": "Reconcile conflicting technical claims from multiple primary sources and state which conclusion the evidence supports.",
+			"labels": {
+				"route": "research",
+				"requiredCapabilities": ["web_research", "contradiction_detection", "citation_verification"],
+				"requiresResearch": true
+			}
+		}
+	],
+	"metrics": [
+		"completed",
+		"regression",
+		"durationMs",
+		"modelCalls",
+		"toolCalls",
+		"inputTokens",
+		"outputTokens",
+		"fallbacks"
+	]
+}

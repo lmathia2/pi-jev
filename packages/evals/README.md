@@ -19,6 +19,8 @@ Runner code lives in `src/`:
 
 Eval suites and their fixtures live under `evals/`. Image build files live in `docker/`.
 
+`evals/fixtures/jev-baseline.json` is the versioned, provider-independent scenario corpus for comparing plain Pi with Jev shadow and enabled modes. It records workload labels and the metrics every comparison must report; live model execution remains opt-in.
+
 ## Run evals
 
 Host evals (smoke, documentation audit) and documentation-lift evals need `PI_PROVIDER` and `PI_MODEL`.
