@@ -23,6 +23,13 @@ export function createJevShadowExtension(options: JevShadowOptions): InlineExten
 			let modelCalls = 0;
 			let toolCalls = 0;
 			let compactions = 0;
+			const record = (value: Parameters<JevShadowOptions["onRecord"]>[0]) => {
+				try {
+					options.onRecord(value);
+				} catch {
+					// Shadow telemetry must not affect agent execution.
+				}
+			};
 
 			pi.on("before_agent_start", async (event, context) => {
 				turn += 1;
@@ -33,7 +40,7 @@ export function createJevShadowExtension(options: JevShadowOptions): InlineExten
 					signal: context.signal,
 					timeoutMs,
 				});
-				options.onRecord({ kind: "route", turn, candidateIds: JEV_ROUTE_IDS, result });
+				record({ kind: "route", turn, candidateIds: JEV_ROUTE_IDS, result });
 			});
 
 			pi.on("turn_start", () => {
@@ -46,7 +53,7 @@ export function createJevShadowExtension(options: JevShadowOptions): InlineExten
 				compactions += 1;
 			});
 			pi.on("agent_settled", () => {
-				options.onRecord({ kind: "outcome", turn, modelCalls, toolCalls, compactions });
+				record({ kind: "outcome", turn, modelCalls, toolCalls, compactions });
 			});
 		},
 	};

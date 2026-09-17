@@ -79,4 +79,27 @@ describe("Jev shadow extension", () => {
 		expect(calls).toBe(0);
 		expect(records).toEqual([]);
 	});
+
+	it("does not let telemetry failures affect the run", async () => {
+		const fetch: Fetch = async () =>
+			new Response(JSON.stringify(successBody), {
+				status: 200,
+				headers: { "content-type": "application/json" },
+			});
+		harness = await createHarness({
+			extensionFactories: [
+				createJevShadowExtension({
+					apiKey: "test",
+					fetch,
+					onRecord: () => {
+						throw new Error("telemetry unavailable");
+					},
+				}),
+			],
+		});
+		harness.setResponses([fauxAssistantMessage("response")]);
+
+		await expect(harness.session.prompt("task")).resolves.toBeUndefined();
+		expect(harness.faux.state.callCount).toBe(1);
+	});
 });
