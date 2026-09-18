@@ -6,7 +6,7 @@ import type { JevRouteId } from "./types.ts";
 export interface JevGenerationRouterOptions {
 	client: TypeSafeClient;
 	routes: Record<JevRouteId, Partial<LaneConfiguration>>;
-	minConfidence?: number;
+	minProbability?: number;
 	minFit?: number;
 	timeoutMs?: number;
 	requiredToolNames?: readonly string[];
@@ -22,7 +22,7 @@ export function createJevGenerationRouter(options: JevGenerationRouterOptions): 
 		});
 		if (
 			!result.ok ||
-			result.decision.confidence < (options.minConfidence ?? 0.7) ||
+			result.decision.probabilities[result.decision.route] < (options.minProbability ?? 0.7) ||
 			result.decision.fit < (options.minFit ?? 0.7)
 		) {
 			return undefined;

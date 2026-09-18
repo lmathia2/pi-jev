@@ -24,7 +24,7 @@ export interface JevCandidate {
 }
 
 export type JevSelectionResult =
-	| { ok: true; id: string; confidence: number; fit: number }
+	| { ok: true; id: string; probability: number; fit: number }
 	| { ok: false; failure: JevFailure | "no_candidates" | "rejected" };
 
 export interface ContextCandidate {

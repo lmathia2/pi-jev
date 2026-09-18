@@ -80,6 +80,8 @@ Existing hooks are sufficient for shadow evaluation. Existing named lanes can ho
 | A8 | Standard tests cannot depend on a network service or API key. | Inject a deterministic fake client; keep live evaluations separate. |
 | A9 | Pi's current tests are the quality floor. | Each core change adds focused regression coverage and keeps existing tests passing. |
 | A10 | `main` is the product line and upstream synchronization is optional. | Optimize design for `pi-jev`; use upstream only as a reference. |
+| A11 | Choice probabilities are sensitive to option order. | Use stable internal labels, preserve candidate order, and rerun calibration whenever candidates or their order change. |
+| A12 | Choice `confidence` is derived from the probability distribution. | Gate on the selected option's probability plus an independent Noul fit check; retain `confidence` only as telemetry. |
 
 ## 6. Decisions
 
@@ -165,7 +167,7 @@ Pi admission and durable run state
    |       - Score: confidence/risk signal
    |
    +--> deterministic policy
-   |       - validate schema and confidence
+   |       - validate schema and selected probability
    |       - enforce authority and invariants
    |       - choose fallback when unavailable
    |
@@ -286,7 +288,7 @@ Jev policy:
 - first Choice ranks route candidates such as `fast`, `standard`, `deep`, and `research`;
 - an optional Noul verifies that the top route fits;
 - TypeScript maps the route to concrete model, thinking level, and tools;
-- low confidence or failure returns no patch.
+- low selected probability or failure returns no patch.
 
 Example trace:
 
@@ -322,7 +324,7 @@ Work:
 4. Derive enum-like or bounded arguments only when every value is present in the candidate set. Leave paths, commands, prose, identifiers, and other open values to the primary model or deterministic code.
 5. Preserve explicitly required tools even when Jev omits them.
 
-Tests cover zero candidates, one candidate, ties, reject-all, unknown IDs, low confidence, required tools, and stable ordering.
+Tests cover zero candidates, one candidate, ties, reject-all, unknown IDs, low selected probability, required tools, and stable ordering.
 
 ### Milestone 4: Semantic context selection
 
@@ -446,7 +448,7 @@ Rules:
 2. Use stable candidate IDs and put descriptions in state.
 3. Batch independent questions when they use the same compact state.
 4. Do not let one answer appear as hidden state for another; make dependencies explicit in code.
-5. Calibrate probability thresholds on labeled fixtures rather than guessing.
+5. Calibrate probability thresholds on at least 100–150 labeled real examples rather than guessing. Measure accuracy within probability bands, and recalibrate after changing candidates, descriptions, or their order.
 6. When no candidate is valid, verify the selected candidate independently.
 7. Version question schemas whenever meaning or candidate mapping changes.
 
@@ -481,7 +483,7 @@ The API key comes only from `TYPESAFE_API_KEY`. Timeouts and thresholds should u
 | Rate limit or service unavailable after SDK retry | Record category and use Pi default. |
 | Invalid typed response | Reject the decision and use Pi default. |
 | Unknown candidate ID | Reject the decision and use Pi default. |
-| Low confidence | Use Pi default or request verification; never invent a candidate. |
+| Low selected probability | Use Pi default or request verification; never invent a candidate. |
 | Telemetry failure | Do not affect the run. |
 | Deterministic safety failure | Deny or require confirmation regardless of Jev output. |
 
