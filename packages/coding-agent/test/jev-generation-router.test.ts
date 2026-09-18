@@ -76,4 +76,32 @@ describe("createJevGenerationRouter", () => {
 			),
 		).resolves.toBeUndefined();
 	});
+
+	it("preserves required tools when a route narrows tool visibility", async () => {
+		const client = createJevClient({ apiKey: "test", fetch: fetchWithFit(0.95), timeoutMs: 100 });
+		const route = createJevGenerationRouter({
+			client,
+			routes: { ...routes, deep: { ...routes.deep, activeToolNames: ["read"] } },
+			requiredToolNames: ["write"],
+		});
+
+		await expect(
+			route(
+				{
+					lane: "main",
+					runId: "run",
+					configuration: base,
+					messages: [{ role: "user", content: "trace the runtime", timestamp: 1 }],
+					attempt: 1,
+				},
+				BACKGROUND_CONTEXT,
+			),
+		).resolves.toEqual({
+			configuration: {
+				model: { provider: "test", modelId: "deep" },
+				thinkingLevel: "high",
+				activeToolNames: ["read", "write"],
+			},
+		});
+	});
 });

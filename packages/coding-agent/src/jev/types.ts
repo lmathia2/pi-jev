@@ -18,6 +18,15 @@ export type JevRouteResult =
 	| { ok: true; decision: JevRouteDecision; durationMs: number }
 	| { ok: false; failure: JevFailure; durationMs: number };
 
+export interface JevCandidate {
+	id: string;
+	description: string;
+}
+
+export type JevSelectionResult =
+	| { ok: true; id: string; confidence: number; fit: number }
+	| { ok: false; failure: JevFailure | "no_candidates" | "rejected" };
+
 export interface JevShadowOptions {
 	apiKey?: string;
 	baseURL?: string;

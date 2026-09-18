@@ -365,13 +365,16 @@ export {
 	createJevShadowExtension,
 	decideJevRoute,
 	JEV_ROUTE_IDS,
+	type JevCandidate,
 	type JevFailure,
 	type JevGenerationRouterOptions,
 	type JevRouteDecision,
 	type JevRouteId,
 	type JevRouteResult,
+	type JevSelectionResult,
 	type JevShadowOptions,
 	type JevShadowRecord,
+	selectJevCandidate,
 } from "./jev/index.ts";
 // Main entry point
 export { type MainOptions, main } from "./main.ts";
