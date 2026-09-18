@@ -43,9 +43,9 @@ function fetchResult(fit: number): Fetch {
 				answers: {
 					where: {
 						type: "choice",
-						choice: "code",
+						choice: "candidate_001",
 						confidence: 0.8,
-						probabilities: { old: 0.1, code: 0.6, test: 0.3 },
+						probabilities: { candidate_000: 0.1, candidate_001: 0.6, candidate_002: 0.3 },
 					},
 					exists: { type: "noul", noul: fit },
 				},

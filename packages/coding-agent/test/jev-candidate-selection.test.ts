@@ -26,17 +26,17 @@ describe("selectJevCandidate", () => {
 			response({
 				candidate: {
 					type: "choice",
-					choice: "code-search",
+					choice: "candidate_000",
 					confidence: 0.4,
-					probabilities: { "code-search": 0.4, implementation: 0.3, research: 0.1, tests: 0.3 },
+					probabilities: { candidate_000: 0.4, candidate_001: 0.3, candidate_002: 0.1, candidate_003: 0.3 },
 				},
 			}),
 			response({
 				candidate: {
 					type: "choice",
-					choice: "implementation",
+					choice: "candidate_001",
 					confidence: 0.9,
-					probabilities: { "code-search": 0.05, implementation: 0.9, tests: 0.05 },
+					probabilities: { candidate_000: 0.05, candidate_001: 0.9, candidate_002: 0.05 },
 				},
 				fits: { type: "noul", noul: 0.95 },
 			}),
@@ -46,7 +46,7 @@ describe("selectJevCandidate", () => {
 		await expect(selectJevCandidate(client, "fix the bug", candidates, { timeoutMs: 100 })).resolves.toEqual({
 			ok: true,
 			id: "implementation",
-			confidence: 0.9,
+			probability: 0.9,
 			fit: 0.95,
 		});
 	});
@@ -56,17 +56,17 @@ describe("selectJevCandidate", () => {
 			response({
 				candidate: {
 					type: "choice",
-					choice: "code-search",
+					choice: "candidate_000",
 					confidence: 0.9,
-					probabilities: { "code-search": 0.9, implementation: 0.04, research: 0.03, tests: 0.03 },
+					probabilities: { candidate_000: 0.9, candidate_001: 0.04, candidate_002: 0.03, candidate_003: 0.03 },
 				},
 			}),
 			response({
 				candidate: {
 					type: "choice",
-					choice: "code-search",
+					choice: "candidate_000",
 					confidence: 0.9,
-					probabilities: { "code-search": 0.9, implementation: 0.05, research: 0.05 },
+					probabilities: { candidate_000: 0.9, candidate_001: 0.05, candidate_002: 0.05 },
 				},
 				fits: { type: "noul", noul: 0.2 },
 			}),
@@ -79,29 +79,29 @@ describe("selectJevCandidate", () => {
 		});
 	});
 
-	it("rejects low confidence and unknown reranked IDs", async () => {
+	it("rejects low selected probability and unknown reranked labels", async () => {
 		const broad = () =>
 			response({
 				candidate: {
 					type: "choice",
-					choice: "code-search",
+					choice: "candidate_000",
 					confidence: 0.9,
-					probabilities: { "code-search": 0.4, implementation: 0.3, research: 0.2, tests: 0.1 },
+					probabilities: { candidate_000: 0.4, candidate_001: 0.3, candidate_002: 0.2, candidate_003: 0.1 },
 				},
 			});
-		const reranked = (choice: string, confidence: number) =>
+		const reranked = (choice: string, probability: number) =>
 			response({
 				candidate: {
 					type: "choice",
 					choice,
-					confidence,
-					probabilities: { "code-search": 0.4, implementation: 0.3, research: 0.3 },
+					confidence: 0.99,
+					probabilities: { candidate_000: probability, candidate_001: 0.3, candidate_002: 0.3 },
 				},
 				fits: { type: "noul", noul: 0.9 },
 			});
 		const client = createJevClient({
 			apiKey: "test",
-			fetch: queuedFetch(broad(), reranked("code-search", 0.2), broad(), reranked("unknown", 0.9)),
+			fetch: queuedFetch(broad(), reranked("candidate_000", 0.2), broad(), reranked("unknown", 0.9)),
 			timeoutMs: 100,
 		});
 
@@ -126,9 +126,44 @@ describe("selectJevCandidate", () => {
 		await expect(selectJevCandidate(client, "task", [candidates[0]], { timeoutMs: 100 })).resolves.toEqual({
 			ok: true,
 			id: "code-search",
-			confidence: 1,
+			probability: 1,
 			fit: 0.9,
 		});
+	});
+
+	it("preserves caller order for integer-like candidate IDs", async () => {
+		const fetch = queuedFetch(
+			response({
+				candidate: {
+					type: "choice",
+					choice: "candidate_000",
+					confidence: 0.8,
+					probabilities: { candidate_000: 0.8, candidate_001: 0.2 },
+				},
+			}),
+			response({
+				candidate: {
+					type: "choice",
+					choice: "candidate_000",
+					confidence: 0.8,
+					probabilities: { candidate_000: 0.8, candidate_001: 0.2 },
+				},
+				fits: { type: "noul", noul: 0.9 },
+			}),
+		);
+		const client = createJevClient({ apiKey: "test", fetch, timeoutMs: 100 });
+
+		await expect(
+			selectJevCandidate(
+				client,
+				"task",
+				[
+					{ id: "10", description: "first" },
+					{ id: "2", description: "second" },
+				],
+				{ timeoutMs: 100 },
+			),
+		).resolves.toEqual({ ok: true, id: "10", probability: 0.8, fit: 0.9 });
 	});
 
 	it("rejects duplicate IDs and candidate sets above the service limit", async () => {

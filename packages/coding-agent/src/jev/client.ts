@@ -101,7 +101,7 @@ export async function selectJevCandidate(
 	client: TypeSafeClient,
 	task: string,
 	candidates: readonly JevCandidate[],
-	options: { signal?: AbortSignal; timeoutMs: number; minConfidence?: number; minFit?: number },
+	options: { signal?: AbortSignal; timeoutMs: number; minProbability?: number; minFit?: number },
 ): Promise<JevSelectionResult> {
 	if (candidates.length === 0) return { ok: false, failure: "no_candidates" };
 	if (
@@ -132,32 +132,51 @@ export async function selectJevCandidate(
 			const fit = response.answers.fits.noul;
 			if (!Number.isFinite(fit)) return { ok: false, failure: "invalid_response" };
 			if (fit < (options.minFit ?? 0.7)) return { ok: false, failure: "rejected" };
-			return { ok: true, id: candidates[0].id, confidence: 1, fit };
+			return { ok: true, id: candidates[0].id, probability: 1, fit };
 		}
-		const criteria = Object.fromEntries(candidates.map((candidate) => [candidate.id, candidate.description]));
+		const labeledCandidates = candidates.map((candidate, index) => ({
+			label: candidateLabel(index),
+			candidate,
+		}));
+		const criteria = Object.fromEntries(labeledCandidates.map(({ label }) => [label, null]));
 		const broad = await client.systemOne(
 			{
-				state: { task: task.slice(0, MAX_TASK_CHARS) },
+				state: {
+					task: task.slice(0, MAX_TASK_CHARS),
+					candidates: labeledCandidates.map(({ label, candidate }) => ({
+						label,
+						id: candidate.id,
+						description: candidate.description,
+					})),
+				},
 				questions: { candidate: choice("Which candidate best matches the task?", criteria) },
 			},
 			{ signal },
 		);
-		if (candidates.some((candidate) => !Number.isFinite(broad.answers.candidate.probabilities[candidate.id]))) {
+		if (labeledCandidates.some(({ label }) => !Number.isFinite(broad.answers.candidate.probabilities[label]))) {
 			return { ok: false, failure: "invalid_response" };
 		}
-		const shortlist = candidates
-			.map((candidate, index) => ({
+		const shortlist = labeledCandidates
+			.map(({ candidate, label }, index) => ({
 				candidate,
 				index,
-				probability: broad.answers.candidate.probabilities[candidate.id],
+				probability: broad.answers.candidate.probabilities[label],
 			}))
 			.sort((left, right) => right.probability - left.probability || left.index - right.index)
 			.slice(0, 3)
 			.map(({ candidate }) => candidate);
-		const shortlistCriteria = Object.fromEntries(shortlist.map((candidate) => [candidate.id, candidate.description]));
+		const labeledShortlist = shortlist.map((candidate, index) => ({ label: candidateLabel(index), candidate }));
+		const shortlistCriteria = Object.fromEntries(labeledShortlist.map(({ label }) => [label, null]));
 		const reranked = await client.systemOne(
 			{
-				state: { task: task.slice(0, MAX_TASK_CHARS) },
+				state: {
+					task: task.slice(0, MAX_TASK_CHARS),
+					candidates: labeledShortlist.map(({ label, candidate }) => ({
+						label,
+						id: candidate.id,
+						description: candidate.description,
+					})),
+				},
 				questions: {
 					candidate: choice("Which shortlisted candidate best matches the task?", shortlistCriteria),
 					fits: noul("Does the selected candidate fit the task?", {
@@ -168,21 +187,21 @@ export async function selectJevCandidate(
 			},
 			{ signal },
 		);
-		const id = reranked.answers.candidate.choice;
-		const confidence = reranked.answers.candidate.confidence;
+		const selected = labeledShortlist.find(({ label }) => label === reranked.answers.candidate.choice);
+		const probability = selected ? reranked.answers.candidate.probabilities[selected.label] : Number.NaN;
 		const fit = reranked.answers.fits.noul;
 		if (
-			!shortlist.some((candidate) => candidate.id === id) ||
-			shortlist.some((candidate) => !Number.isFinite(reranked.answers.candidate.probabilities[candidate.id])) ||
-			!Number.isFinite(confidence) ||
+			selected === undefined ||
+			labeledShortlist.some(({ label }) => !Number.isFinite(reranked.answers.candidate.probabilities[label])) ||
+			!Number.isFinite(probability) ||
 			!Number.isFinite(fit)
 		) {
 			return { ok: false, failure: "invalid_response" };
 		}
-		if (confidence < (options.minConfidence ?? 0.7) || fit < (options.minFit ?? 0.7)) {
+		if (probability < (options.minProbability ?? 0.7) || fit < (options.minFit ?? 0.7)) {
 			return { ok: false, failure: "rejected" };
 		}
-		return { ok: true, id, confidence, fit };
+		return { ok: true, id: selected.candidate.id, probability, fit };
 	} catch (error) {
 		return { ok: false, failure: classifyJevFailure(error, options.signal, timeoutSignal) };
 	}
@@ -224,12 +243,17 @@ export async function findJevCandidates(
 			if (!Number.isFinite(fit)) return { ok: false, failure: "invalid_response" };
 			return { ok: true, relevance: { [candidates[0].id]: 1 }, fit };
 		}
-		const criteria = Object.fromEntries(candidates.map((candidate) => [candidate.id, null]));
+		const labeledCandidates = candidates.map((candidate, index) => ({
+			label: candidateLabel(index),
+			candidate,
+		}));
+		const criteria = Object.fromEntries(labeledCandidates.map(({ label }) => [label, null]));
 		const response = await client.systemOne(
 			{
 				state: {
 					query: query.slice(0, MAX_TASK_CHARS),
-					candidates: candidates.map((candidate) => ({
+					candidates: labeledCandidates.map(({ label, candidate }) => ({
+						label,
 						id: candidate.id,
 						description: candidate.description,
 					})),
@@ -245,7 +269,7 @@ export async function findJevCandidates(
 			{ signal },
 		);
 		const relevance = Object.fromEntries(
-			candidates.map((candidate) => [candidate.id, response.answers.where.probabilities[candidate.id]]),
+			labeledCandidates.map(({ label, candidate }) => [candidate.id, response.answers.where.probabilities[label]]),
 		);
 		const fit = response.answers.exists.noul;
 		if (Object.values(relevance).some((probability) => !Number.isFinite(probability)) || !Number.isFinite(fit)) {
@@ -255,6 +279,10 @@ export async function findJevCandidates(
 	} catch (error) {
 		return { ok: false, failure: classifyJevFailure(error, options.signal, timeoutSignal) };
 	}
+}
+
+function candidateLabel(index: number): string {
+	return `candidate_${index.toString().padStart(3, "0")}`;
 }
 
 function classifyJevFailure(
