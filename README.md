@@ -10,9 +10,9 @@
 
 > New issues and PRs from new contributors are auto-closed by default. Maintainers review auto-closed issues daily. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
-# Pi Agent Harness
+# Pi-Jev Agent Harness
 
-This is the home of the Pi agent harness project including our self extensible coding agent.
+Pi-Jev is an independent Pi-derived agent harness. It preserves Pi's model loop, tool execution, sessions, compaction, and extension system while using [Jev](https://docs.typesafe.ai) for bounded semantic decisions. Jev advises the harness; deterministic Pi code validates and applies every decision.
 
 * **[@earendil-works/pi-coding-agent](packages/coding-agent)**: Interactive coding agent CLI
 * **[@earendil-works/pi-agent-core](packages/agent)**: Agent runtime with tool calling and state management
@@ -22,6 +22,58 @@ To learn more about Pi:
 
 * [Visit pi.dev](https://pi.dev), the project website with demos
 * [Read the documentation](https://pi.dev/docs/latest), but you can also ask the agent to explain itself
+
+## Jev integration
+
+The normal coding-agent startup path reads Jev settings and installs a provider-neutral generation-routing component. The component has two implementations:
+
+- the default provider returns no override, preserving ordinary Pi behavior;
+- the Jev provider classifies the task as `fast`, `standard`, `deep`, or `research`, then maps the selected route to an explicitly configured model, thinking level, and tool allowlist.
+
+Jev never generates tool arguments, executes tools, grants permissions, or bypasses Pi's model and tool registries.
+
+### Runtime modes
+
+| Mode | Behavior |
+|---|---|
+| `off` | Default. No Jev client or routing extension is created. |
+| `shadow` | Starts the Jev request asynchronously and records its result without delaying or changing the main path. |
+| `route` | Waits for a validated Jev decision and applies the configured route profile before the agent run. |
+
+Set `TYPESAFE_API_KEY` in the environment, then configure `~/.pi/agent/settings.json` or project-local `.pi/settings.json`:
+
+```json
+{
+  "jev": {
+    "mode": "route",
+    "timeoutMs": 5000,
+    "minProbability": 0.7,
+    "minFit": 0.7,
+    "routes": {
+      "fast": { "thinkingLevel": "low", "tools": ["read", "grep"] },
+      "standard": { "thinkingLevel": "medium" },
+      "deep": { "thinkingLevel": "high" },
+      "research": { "thinkingLevel": "high", "tools": ["read", "grep"] }
+    }
+  }
+}
+```
+
+A route may also set `provider` and `model` together. Unknown routes, unavailable models or tools, missing authentication, low probability or fit, timeouts, rate limits, malformed responses, and provider errors all preserve the current Pi configuration.
+
+### Decision points in the code
+
+| Decision point | Code | Runtime status | Default behavior |
+|---|---|---|---|
+| Generation route | [`generation-routing.ts`](packages/coding-agent/src/core/generation-routing.ts), [`runtime.ts`](packages/coding-agent/src/jev/runtime.ts) | Automatically wired into normal session startup according to `jev.mode` | Keep the current model, thinking level, and tools |
+| Durable pre-generation route | [`generation-router.ts`](packages/coding-agent/src/jev/generation-router.ts) | Available to low-level `AgentHarness` hosts | Return no generation patch |
+| Skill, tool, or specialist selection | [`selectJevCandidate`](packages/coding-agent/src/jev/client.ts) | Available to callers with a bounded candidate list | Keep the caller's existing selection path |
+| Context selection | [`selectJevContext`](packages/coding-agent/src/jev/context-selector.ts) | Available to retrieval and `transform_context` integrations | Return all original context IDs |
+| Shadow evaluation | [`shadow.ts`](packages/coding-agent/src/jev/shadow.ts) | Available separately; configured runtime shadow uses the shared routing component | Observe only; never mutate execution |
+
+Routing writes privacy-safe `generation-route` session entries containing the turn, selected route, probability, fit, applied profile, or fallback reason. It does not store the task prompt, repository contents, tool output, or API key.
+
+Checkpoint control and selective compaction are intentionally not active. The existing Pi loop and compaction remain authoritative until offline evaluation justifies those changes. See [`docs/jev-harness.md`](docs/jev-harness.md) for assumptions, invariants, implementation status, and deferred work.
 
 ## All Packages
 
