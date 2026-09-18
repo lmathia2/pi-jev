@@ -9,6 +9,7 @@ export interface JevGenerationRouterOptions {
 	minConfidence?: number;
 	minFit?: number;
 	timeoutMs?: number;
+	requiredToolNames?: readonly string[];
 }
 
 export function createJevGenerationRouter(options: JevGenerationRouterOptions): HookHandler<"before_generation"> {
@@ -26,7 +27,16 @@ export function createJevGenerationRouter(options: JevGenerationRouterOptions): 
 		) {
 			return undefined;
 		}
-		return { configuration: options.routes[result.decision.route] };
+		const configuration = options.routes[result.decision.route];
+		if (configuration.activeToolNames === undefined || options.requiredToolNames === undefined) {
+			return { configuration };
+		}
+		return {
+			configuration: {
+				...configuration,
+				activeToolNames: [...new Set([...configuration.activeToolNames, ...options.requiredToolNames])],
+			},
+		};
 	};
 }
 
