@@ -78,4 +78,13 @@ export {
 	type TurnStartEvent,
 	type WorkingIndicatorOptions,
 } from "./extensions/index.ts";
+export {
+	createGenerationRoutingExtension,
+	defaultGenerationRouteProvider,
+	type GenerationRouteDecision,
+	type GenerationRouteProfile,
+	type GenerationRouteProvider,
+	type GenerationRouteProviderResult,
+	type GenerationRouteRecord,
+} from "./generation-routing.ts";
 export { createSyntheticSourceInfo } from "./source-info.ts";

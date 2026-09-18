@@ -31,16 +31,16 @@ export function createJevShadowExtension(options: JevShadowOptions): InlineExten
 				}
 			};
 
-			pi.on("before_agent_start", async (event, context) => {
+			pi.on("before_agent_start", (event, context) => {
 				turn += 1;
+				const currentTurn = turn;
 				modelCalls = 0;
 				toolCalls = 0;
 				compactions = 0;
-				const result = await decideJevRoute(client, event.prompt, {
+				void decideJevRoute(client, event.prompt, {
 					signal: context.signal,
 					timeoutMs,
-				});
-				record({ kind: "route", turn, candidateIds: JEV_ROUTE_IDS, result });
+				}).then((result) => record({ kind: "route", turn: currentTurn, candidateIds: JEV_ROUTE_IDS, result }));
 			});
 
 			pi.on("turn_start", () => {

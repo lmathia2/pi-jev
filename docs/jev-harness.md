@@ -454,24 +454,32 @@ Rules:
 
 ## 11. Configuration
 
-Initial configuration should be minimal:
+The runnable harness uses the existing Pi settings file:
 
 ```json
 {
   "jev": {
-    "mode": "off"
+    "mode": "route",
+    "timeoutMs": 5000,
+    "minProbability": 0.7,
+    "minFit": 0.7,
+    "routes": {
+      "fast": { "thinkingLevel": "low", "tools": ["read", "grep"] },
+      "standard": { "thinkingLevel": "medium" },
+      "deep": { "thinkingLevel": "high" },
+      "research": { "thinkingLevel": "high", "tools": ["read", "grep"] }
+    }
   }
 }
 ```
 
-Supported modes should grow only with implementation:
+Supported modes:
 
 - `off`: no SDK initialization and no behavior change;
-- `shadow`: record decisions, do not apply them;
+- `shadow`: start decisions asynchronously, never delay or mutate the main path, and record results when available;
 - `route`: apply only validated generation routing;
-- `on`: enable individually released features.
 
-The API key comes only from `TYPESAFE_API_KEY`. Timeouts and thresholds should use code defaults until evaluations prove users need configuration. Avoid a settings surface for every prompt or probability.
+Each route can set `provider` and `model` together, `thinkingLevel`, and a tool allowlist. Missing or invalid models and tools preserve the current Pi configuration. The API key comes only from `TYPESAFE_API_KEY`; a missing key behaves as `off`.
 
 ## 12. Failure handling
 
