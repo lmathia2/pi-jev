@@ -80,6 +80,28 @@ describe("Jev shadow extension", () => {
 		expect(records).toEqual([]);
 	});
 
+	it("does not wait for the shadow request", async () => {
+		let calls = 0;
+		harness = await createHarness({
+			extensionFactories: [
+				createJevShadowExtension({
+					apiKey: "test",
+					fetch: async () => {
+						calls += 1;
+						return new Promise(() => {});
+					},
+					onRecord: () => {},
+				}),
+			],
+		});
+		harness.setResponses([fauxAssistantMessage("response")]);
+
+		await harness.session.prompt("task");
+
+		expect(calls).toBe(1);
+		expect(harness.faux.state.callCount).toBe(1);
+	});
+
 	it("does not let telemetry failures affect the run", async () => {
 		const fetch: Fetch = async () =>
 			new Response(JSON.stringify(successBody), {

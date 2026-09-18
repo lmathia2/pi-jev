@@ -187,6 +187,15 @@ export {
 } from "./core/extensions/index.ts";
 // Footer data provider (git branch + extension statuses - data not otherwise available to extensions)
 export type { ReadonlyFooterDataProvider } from "./core/footer-data-provider.ts";
+export {
+	createGenerationRoutingExtension,
+	defaultGenerationRouteProvider,
+	type GenerationRouteDecision,
+	type GenerationRouteProfile,
+	type GenerationRouteProvider,
+	type GenerationRouteProviderResult,
+	type GenerationRouteRecord,
+} from "./core/generation-routing.ts";
 export { convertToLlm } from "./core/messages.ts";
 export { ModelRegistry } from "./core/model-registry.ts";
 export {
@@ -276,6 +285,8 @@ export {
 	type DefaultProjectTrust,
 	type FullscreenExitOutput,
 	type ImageSettings,
+	type JevRouteSettings,
+	type JevSettings,
 	type PackageSource,
 	type RetrySettings,
 	SettingsManager,
@@ -361,7 +372,9 @@ export {
 } from "./core/trust-manager.ts";
 export {
 	type ContextCandidate,
+	createConfiguredGenerationRoutingExtension,
 	createJevClient,
+	createJevGenerationRouteProvider,
 	createJevGenerationRouter,
 	createJevShadowExtension,
 	decideJevRoute,
