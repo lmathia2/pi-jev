@@ -14,6 +14,7 @@ import {
 	JEV_ROUTE_IDS,
 	type JevCandidate,
 	type JevFailure,
+	type JevFindResult,
 	type JevRouteId,
 	type JevRouteResult,
 	type JevSelectionResult,
@@ -182,6 +183,55 @@ export async function selectJevCandidate(
 			return { ok: false, failure: "rejected" };
 		}
 		return { ok: true, id, confidence, fit };
+	} catch (error) {
+		return { ok: false, failure: classifyJevFailure(error, options.signal, timeoutSignal) };
+	}
+}
+
+export async function findJevCandidates(
+	client: TypeSafeClient,
+	query: string,
+	candidates: readonly JevCandidate[],
+	options: { signal?: AbortSignal; timeoutMs: number },
+): Promise<JevFindResult> {
+	if (candidates.length === 0) return { ok: false, failure: "no_candidates" };
+	if (
+		candidates.length > MAX_CANDIDATES ||
+		new Set(candidates.map((candidate) => candidate.id)).size !== candidates.length
+	) {
+		return { ok: false, failure: "invalid_response" };
+	}
+	const timeoutSignal = AbortSignal.timeout(options.timeoutMs);
+	const signal = options.signal ? AbortSignal.any([options.signal, timeoutSignal]) : timeoutSignal;
+	try {
+		const criteria = Object.fromEntries(candidates.map((candidate) => [candidate.id, null]));
+		const response = await client.systemOne(
+			{
+				state: {
+					query: query.slice(0, MAX_TASK_CHARS),
+					candidates: candidates.map((candidate) => ({
+						id: candidate.id,
+						description: candidate.description,
+					})),
+				},
+				questions: {
+					where: choice("Which candidate best addresses the query?", criteria),
+					exists: noul("Does any candidate address the query?", {
+						true: "At least one candidate states or directly implies an answer",
+						false: "No candidate addresses the query",
+					}),
+				},
+			},
+			{ signal },
+		);
+		const relevance = Object.fromEntries(
+			candidates.map((candidate) => [candidate.id, response.answers.where.probabilities[candidate.id]]),
+		);
+		const fit = response.answers.exists.noul;
+		if (Object.values(relevance).some((probability) => !Number.isFinite(probability)) || !Number.isFinite(fit)) {
+			return { ok: false, failure: "invalid_response" };
+		}
+		return { ok: true, relevance, fit };
 	} catch (error) {
 		return { ok: false, failure: classifyJevFailure(error, options.signal, timeoutSignal) };
 	}
