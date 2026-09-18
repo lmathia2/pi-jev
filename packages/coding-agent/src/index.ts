@@ -360,13 +360,17 @@ export {
 	type ProjectTrustUpdate,
 } from "./core/trust-manager.ts";
 export {
+	type ContextCandidate,
 	createJevClient,
 	createJevGenerationRouter,
 	createJevShadowExtension,
 	decideJevRoute,
+	findJevCandidates,
 	JEV_ROUTE_IDS,
 	type JevCandidate,
+	type JevContextSelectorOptions,
 	type JevFailure,
+	type JevFindResult,
 	type JevGenerationRouterOptions,
 	type JevRouteDecision,
 	type JevRouteId,
@@ -375,6 +379,7 @@ export {
 	type JevShadowOptions,
 	type JevShadowRecord,
 	selectJevCandidate,
+	selectJevContext,
 } from "./jev/index.ts";
 // Main entry point
 export { type MainOptions, main } from "./main.ts";

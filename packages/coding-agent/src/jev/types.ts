@@ -27,6 +27,18 @@ export type JevSelectionResult =
 	| { ok: true; id: string; confidence: number; fit: number }
 	| { ok: false; failure: JevFailure | "no_candidates" | "rejected" };
 
+export interface ContextCandidate {
+	id: string;
+	source: "message" | "file" | "symbol" | "git" | "document";
+	label: string;
+	excerpt: string;
+	required: boolean;
+}
+
+export type JevFindResult =
+	| { ok: true; relevance: Readonly<Record<string, number>>; fit: number }
+	| { ok: false; failure: JevFailure | "no_candidates" };
+
 export interface JevShadowOptions {
 	apiKey?: string;
 	baseURL?: string;
