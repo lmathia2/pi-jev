@@ -151,6 +151,7 @@ const HOOK_NAMES = [
 	"before_drive",
 	"before_run_end",
 	"transform_context",
+	"before_generation",
 	"before_request",
 	"before_payload",
 	"after_response",

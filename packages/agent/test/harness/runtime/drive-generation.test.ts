@@ -388,6 +388,26 @@ describe("runtime generation checkpoint", () => {
 });
 
 describe("runtime assistant generation", () => {
+	it("captures a before_generation patch before provider admission", async () => {
+		const fixture = await createFixture();
+		const ready = await advanceToReady(fixture);
+		const hook = vi.fn(() => ({ configuration: { thinkingLevel: "high" as const } }));
+		fixture.hooks.on("before_generation", hook);
+		let captured: LaneConfiguration | undefined;
+		fixture.faux.setResponses([
+			async () => {
+				const state = await fixture.session.getValue(storedValues.operationState(operationId), BACKGROUND_CONTEXT);
+				if (state?.value.at === "assistant.effect_pending") captured = state.value.generationContext.configuration;
+				return fauxAssistantMessage("answer", { timestamp: 5 });
+			},
+		]);
+
+		expect(await runGeneration(fixture.lane, fixture.drive, ready)).toEqual({ kind: "continue" });
+		expect(hook).toHaveBeenCalledOnce();
+		expect(captured).toEqual({ ...ready.generationContext.configuration, thinkingLevel: "high" });
+		expect(fixture.lane.state.configuration.thinkingLevel).toBe("off");
+	});
+
 	it("commits intent before provider admission, preserves queued inbox state, and settles reserved ids", async () => {
 		const fixture = await createFixture();
 		const ready = await advanceToReady(fixture);

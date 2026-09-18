@@ -9,6 +9,7 @@ import {
 	type AssistantReadyOperation,
 	type AssistantRetryWaitOperation,
 	type JsonValue,
+	type LaneConfiguration,
 	type OperationError,
 	type OperationScope,
 	operationScopeOf,
@@ -32,6 +33,7 @@ type PreparedGeneration = {
 	systemPrompt: string;
 	streamOptions: AgentHarnessStreamOptions;
 	toProviderMessages: HarnessAssistantStreamConfig["toProviderMessages"];
+	configuration: LaneConfiguration;
 };
 
 type GenerationPreparation =
@@ -70,7 +72,28 @@ async function prepareGeneration<TContext extends object | undefined>(
 	drive: Drive,
 	generation: AssistantReadyOperation,
 ): Promise<GenerationPreparation> {
-	const identity = generation.generationContext.configuration.model;
+	const messages = await readBoundedContext(lane, drive, generation);
+	if (messages.kind === "cancel_requested") return messages;
+	const hook =
+		generation.nextAttempt === 1
+			? await lane.hooks.runWithGate(
+					"before_generation",
+					{
+						lane: lane.name,
+						runId: drive.operationId,
+						configuration: generation.generationContext.configuration,
+						messages: messages.value,
+						attempt: generation.nextAttempt,
+					},
+					drive.gate,
+					drive.context,
+				)
+			: undefined;
+	const configuration =
+		hook?.configuration === undefined
+			? generation.generationContext.configuration
+			: { ...generation.generationContext.configuration, ...hook.configuration };
+	const identity = configuration.model;
 	const model = lane.models.getModel(identity.provider, identity.modelId);
 	if (model === undefined) {
 		return { kind: "configuration_failure", error: configurationError("model_unavailable", identity) };
@@ -78,16 +101,14 @@ async function prepareGeneration<TContext extends object | undefined>(
 
 	const config = lane.readConfig();
 	const toolsByName = new Map(config.tools.map((tool) => [tool.name, tool]));
-	const missingTools = generation.generationContext.configuration.activeToolNames.filter(
-		(name) => !toolsByName.has(name),
-	);
+	const missingTools = configuration.activeToolNames.filter((name) => !toolsByName.has(name));
 	if (missingTools.length !== 0) {
 		return {
 			kind: "configuration_failure",
 			error: configurationError("configured_tools_unavailable", { tools: missingTools }),
 		};
 	}
-	const tools: Tool[] = generation.generationContext.configuration.activeToolNames.map((name) => {
+	const tools: Tool[] = configuration.activeToolNames.map((name) => {
 		const tool = toolsByName.get(name);
 		if (tool === undefined) throw new SessionInvariantError(`Configured tool ${name} disappeared during resolution`);
 		return {
@@ -98,8 +119,6 @@ async function prepareGeneration<TContext extends object | undefined>(
 		};
 	});
 
-	const messages = await readBoundedContext(lane, drive, generation);
-	if (messages.kind === "cancel_requested") return messages;
 	const systemPrompt = await resolveSystemPrompt(lane, drive.context);
 	const beforeRequest = await lane.hooks.runWithGate(
 		"before_request",
@@ -126,6 +145,7 @@ async function prepareGeneration<TContext extends object | undefined>(
 		systemPrompt,
 		streamOptions,
 		toProviderMessages: config.toProviderMessages,
+		configuration,
 	};
 }
 
@@ -138,7 +158,7 @@ async function publishGenerationIntent<TContext extends object | undefined>(
 	const at = Date.now();
 	const pending: AssistantEffectPending = {
 		at: "assistant.effect_pending",
-		generationContext: ready.generationContext,
+		generationContext: { ...ready.generationContext, configuration: prepared.configuration },
 		attempt: ready.nextAttempt,
 		responseEntryId: lane.session.idGenerator.next(at),
 		usageId: lane.session.idGenerator.next(at),

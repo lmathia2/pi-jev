@@ -52,6 +52,31 @@ describe("createGate", () => {
 });
 
 describe("HookRegistry", () => {
+	it("aggregates before_generation configuration patches in registration order", async () => {
+		const hooks = new HookRegistry(() => {});
+		hooks.on("before_generation", () => ({ configuration: { thinkingLevel: "high" } }));
+		hooks.on("before_generation", (event) => {
+			expect(event.configuration.thinkingLevel).toBe("high");
+			return { configuration: { activeToolNames: ["read"] } };
+		});
+		const configuration = {
+			model: { provider: "test", modelId: "model" },
+			thinkingLevel: "off" as const,
+			activeToolNames: [],
+		};
+
+		await expect(
+			hooks.runWithGate(
+				"before_generation",
+				{ lane: "main", runId: "run", configuration, messages: [], attempt: 1 },
+				createGate().gate,
+				BACKGROUND_CONTEXT,
+			),
+		).resolves.toEqual({
+			configuration: { ...configuration, thinkingLevel: "high", activeToolNames: ["read"] },
+		});
+	});
+
 	it("aggregates before_run messages in registration order with each handler seeing prior output", async () => {
 		const errors: Error[] = [];
 		const hooks = new HookRegistry((error) => {
