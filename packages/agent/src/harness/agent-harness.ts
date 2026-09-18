@@ -444,6 +444,10 @@ export interface HookMap {
 		event: { messages: AgentMessage[]; systemPrompt: string };
 		result: { messages?: AgentMessage[]; systemPrompt?: string } | undefined;
 	};
+	before_generation: {
+		event: { configuration: LaneConfiguration; messages: AgentMessage[]; attempt: number };
+		result: { configuration?: Partial<LaneConfiguration> } | undefined;
+	};
 	before_request: {
 		event: {
 			model: Model<Api>;

@@ -737,7 +737,7 @@ Structural preparation may run outside the mutation line, but the acceptance com
 
 ## 3.7 Assistant generation
 
-Four phases: read compaction-bounded context and resolve captured model/tools → run `before_request` and commit `assistant.effect_pending` with response/usage ids → admit and consume the provider stream → commit response entry + usage + frame cleanup + one classified successor.
+Four phases: read compaction-bounded context, run `before_generation`, and resolve the effective model/tools → run `before_request` and commit `assistant.effect_pending` with the effective configuration and response/usage ids → admit and consume the provider stream → commit response entry + usage + frame cleanup + one classified successor.
 
 The request identity is the stable lane identity `Session metadata id + ":" + lane name` (§5.7). The intent snapshots the lane configuration, stream options, retry policy, trigger, and overflow-recovery flag. An unavailable captured model or configured tool fails terminally before intent with a machine-readable configuration error and no fabricated response or usage.
 
@@ -938,7 +938,7 @@ The admitted boundary is the public Models/tool/hook operation, not an eventual 
 
 The complete admission catalog:
 
-- **Hook aggregates** (one `admit` wraps the complete registered pipeline, not each handler): `before_drive`, `before_run`, `before_run_end`, `transform_context`, `before_request`, `before_payload`, `after_response`, `before_tool`, `after_tool`, `before_compaction`, `before_navigation`.
+- **Hook aggregates** (one `admit` wraps the complete registered pipeline, not each handler): `before_drive`, `before_run`, `before_run_end`, `transform_context`, `before_generation`, `before_request`, `before_payload`, `after_response`, `before_tool`, `after_tool`, `before_compaction`, `before_navigation`.
 - **Provider operations:** one assistant `Models.streamSimple`, each individual structural-summary request, one explicit `Models.streamDeferred` poll. Best-effort `cancelDeferred` is cancellation cleanup and uses its separate close-only signal.
 - **Other:** one real `tool.execute` and creation of each assistant/structural retry timer. Unknown, invalid, blocked, and synthetic tool outcomes start no tool and use no gate.
 
@@ -1175,6 +1175,7 @@ The canonical hook contract (event/result field shapes as declared in `agent-har
 | `before_drive` | `{ operation: "run"\|"compaction"\|"navigation" }` | `void`; failure rejects the pass with no durable progress | pass-local |
 | `before_run_end` | `{ runId, messages }` | `{ followUp?: string }` | transition-consumed: a follow-up and continuation commit together, or the terminal transaction consumes the no-follow-up decision |
 | `transform_context` | `{ messages, systemPrompt }` | `{ messages?, systemPrompt? }` | request-local |
+| `before_generation` | `{ configuration, messages, attempt }` | `{ configuration?: Partial<LaneConfiguration> }` | attempt 1 only; the effective configuration is stored in `assistant.effect_pending` and reused by retries/recovery |
 | `before_request` | `{ model, step: "assistant"\|"deferred"\|"compaction"\|"branch_summary", attempt, streamOptions }` | `{ streamOptions?: AgentHarnessStreamOptionsPatch }` | request-local: the intent stores only its specified derived request metadata |
 | `before_payload` | `{ model, payload: unknown }` | `{ payload }` | request-local |
 | `after_response` | `{ status?, headers?, message: SettledAssistantMessage }` | `{ message? }` (must keep role) | transition-consumed: the transformed message feeds the settled response entry; cancellation or overflow may normalize it at commit |

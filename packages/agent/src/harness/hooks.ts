@@ -108,6 +108,8 @@ export class HookRegistry implements Hooks {
 			}
 			case "transform_context":
 				return this.transformContext(event as HookInvocation<"transform_context">, context);
+			case "before_generation":
+				return this.beforeGeneration(event as HookInvocation<"before_generation">, context);
 			case "before_request":
 				return this.beforeRequest(event as HookInvocation<"before_request">, context);
 			case "before_payload":
@@ -123,6 +125,30 @@ export class HookRegistry implements Hooks {
 			case "before_navigation":
 				return this.firstStructural(name, event as HookInvocation<"before_navigation">, "summary", context);
 		}
+	}
+
+	private async beforeGeneration(
+		event: HookInvocation<"before_generation">,
+		context: Context,
+	): Promise<HookMap["before_generation"]["result"]> {
+		let configuration = event.configuration;
+		for (const registration of this.registrationsFor("before_generation")) {
+			try {
+				const result = (await registration.handler(
+					{ ...event, configuration },
+					context,
+				)) as HookMap["before_generation"]["result"];
+				if (result?.configuration !== undefined) configuration = { ...configuration, ...result.configuration };
+			} catch (error) {
+				await this.reportError(
+					error instanceof Error ? error : new Error(String(error)),
+					"before_generation",
+					event.lane,
+					context,
+				);
+			}
+		}
+		return configuration === event.configuration ? undefined : { configuration };
 	}
 
 	private async beforeRun(

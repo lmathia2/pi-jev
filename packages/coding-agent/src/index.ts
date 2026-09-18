@@ -361,10 +361,12 @@ export {
 } from "./core/trust-manager.ts";
 export {
 	createJevClient,
+	createJevGenerationRouter,
 	createJevShadowExtension,
 	decideJevRoute,
 	JEV_ROUTE_IDS,
 	type JevFailure,
+	type JevGenerationRouterOptions,
 	type JevRouteDecision,
 	type JevRouteId,
 	type JevRouteResult,

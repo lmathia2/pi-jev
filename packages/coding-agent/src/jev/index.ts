@@ -1,4 +1,5 @@
 export { createJevClient, decideJevRoute } from "./client.ts";
+export { createJevGenerationRouter, type JevGenerationRouterOptions } from "./generation-router.ts";
 export { createJevShadowExtension } from "./shadow.ts";
 export {
 	JEV_ROUTE_IDS,

@@ -429,6 +429,7 @@ it("covers Part 5 results, events, hooks, snapshots, tools, and stream options",
 		| "before_drive"
 		| "before_run_end"
 		| "transform_context"
+		| "before_generation"
 		| "before_request"
 		| "before_payload"
 		| "after_response"
