@@ -201,6 +201,21 @@ This is a proposed shape, not a public abstraction. The first implementation sho
 
 ## 9. Implementation milestones
 
+### Implementation status (2026-09-17)
+
+| Milestone | Result | Evidence / decision |
+|---|---|---|
+| 0. Baseline | Merged | [PR #2](https://github.com/lmathia2/pi-jev/pull/2) adds the offline corpus and comparison fixtures. |
+| 1. Shadow decisions | Merged | [PR #3](https://github.com/lmathia2/pi-jev/pull/3) adds the pinned SDK, typed client, failure isolation, and shadow records. |
+| 2. Pre-generation routing | Merged | [PR #4](https://github.com/lmathia2/pi-jev/pull/4) adds the durable `before_generation` seam and persists the effective configuration before provider admission. |
+| 3. Skill and tool routing | Merged | [PR #5](https://github.com/lmathia2/pi-jev/pull/5) adds bounded shortlist/rerank/reject selection and required-tool preservation. Loaded skills map directly to `{ id, description }`; no duplicate skill wrapper was added. |
+| 4. Context selection | Merged | [PR #6](https://github.com/lmathia2/pi-jev/pull/6) implements Choice relevance plus independent Noul answer presence, required-item retention, candidate bounds, stable output order, and full-context fallback. The existing `transform_context` boundary applies returned IDs; stored transcripts are unchanged. |
+| 5. Checkpoints | Skipped | The required shadow evidence for safe finish/continue decisions does not exist yet. Existing loop behavior remains authoritative. |
+| 6. Selective compaction | Deferred | `session_before_compact` can replace a summary and choose the retained tail, but cannot retain selected older tool calls/results as typed messages. A correct port of `fast-jev-compaction` therefore needs a core retained-history representation. That rewrite is not justified without compaction evaluation data. |
+| 7. Specialists | No new runtime | Existing named lanes plus the merged bounded selector already provide the required selection, cancellation, and accounting primitives. Add a child-agent API only if a measured workflow proves lanes insufficient. |
+
+The code milestones remain disabled unless a host explicitly constructs and registers their Jev policies. Jev failure continues to return ordinary Pi behavior.
+
 ### Milestone 0: Baseline and fixtures
 
 Branch: `feat/jev-baseline`
@@ -356,6 +371,8 @@ Tests cover every state-machine leaf that can reach the boundary, restart after 
 
 If the entry condition is not met, skip this milestone. Existing loop behavior is sufficient.
 
+Current decision: skipped. No checkpoint precision dataset has satisfied the entry condition.
+
 ### Milestone 6: Selective compaction
 
 Branch: `feat/jev-compaction`
@@ -385,6 +402,8 @@ Core storage changes are allowed only if the extension cannot express a correct 
 
 Tests compare reconstructed provider context before and after compaction and include repeated compaction, split turns, large tool output, failures, empty selections, and Jev fallback.
 
+Current decision: deferred. Pi's extension result contains only `summary`, `firstKeptEntryId`, token metadata, and optional details. It cannot express a non-contiguous retained history or preserve older tool calls/results in their original roles. Do not serialize selected tool interactions into summary prose as a workaround; that would violate the structural invariants above. Revisit only after a corpus measures the expected reduction and a core design preserves typed entries, cut points, repeated compaction, branches, restart, and overflow recovery.
+
 ### Milestone 7: Specialist lanes and research
 
 Branch: `feat/jev-specialists`
@@ -401,6 +420,8 @@ Work:
 Do not add a native child-agent API unless lanes cannot provide isolation, cancellation, and accounting required by measured workflows.
 
 Tests use faux providers and local fixtures. They cover cycles, depth, partial failure, cancellation, citation mismatch, contradictory evidence, deterministic merge order, and usage accounting.
+
+Current decision: use existing named lanes and `selectJevCandidate`. No separate specialist runtime is needed until an actual coding or research workflow demonstrates a missing isolation, cancellation, or accounting capability.
 
 ## 10. Jev question design
 
