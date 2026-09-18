@@ -107,4 +107,25 @@ describe("selectJevContext", () => {
 
 		await expect(selectJevContext("task", oversized, { client })).resolves.toEqual(oversized.map(({ id }) => id));
 	});
+
+	it("uses only answer verification for one optional candidate", async () => {
+		const client = createJevClient({
+			apiKey: "test",
+			fetch: async () =>
+				new Response(
+					JSON.stringify({
+						model: "jev-test",
+						answers: { exists: { type: "noul", noul: 0.9 } },
+						usage: { input_tokens: 1, output_tokens: 1 },
+					}),
+					{ status: 200, headers: { "content-type": "application/json" } },
+				),
+			timeoutMs: 100,
+		});
+
+		await expect(selectJevContext("task", [candidates[0], candidates[2]], { client })).resolves.toEqual([
+			"policy",
+			"code",
+		]);
+	});
 });

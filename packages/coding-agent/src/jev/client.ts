@@ -204,6 +204,26 @@ export async function findJevCandidates(
 	const timeoutSignal = AbortSignal.timeout(options.timeoutMs);
 	const signal = options.signal ? AbortSignal.any([options.signal, timeoutSignal]) : timeoutSignal;
 	try {
+		if (candidates.length === 1) {
+			const response = await client.systemOne(
+				{
+					state: {
+						query: query.slice(0, MAX_TASK_CHARS),
+						candidate: { id: candidates[0].id, description: candidates[0].description },
+					},
+					questions: {
+						exists: noul("Does the candidate address the query?", {
+							true: "The candidate states or directly implies an answer",
+							false: "The candidate does not address the query",
+						}),
+					},
+				},
+				{ signal },
+			);
+			const fit = response.answers.exists.noul;
+			if (!Number.isFinite(fit)) return { ok: false, failure: "invalid_response" };
+			return { ok: true, relevance: { [candidates[0].id]: 1 }, fit };
+		}
 		const criteria = Object.fromEntries(candidates.map((candidate) => [candidate.id, null]));
 		const response = await client.systemOne(
 			{
