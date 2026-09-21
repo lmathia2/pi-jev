@@ -1,0 +1,19 @@
+{
+	"name": "@earendil-works/pi-decisions",
+	"version": "0.85.1",
+	"description": "Reusable bounded decisions, policy artifacts, and offline evaluation",
+	"type": "module",
+	"main": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" },
+		"./jev": { "types": "./dist/jev.d.ts", "import": "./dist/jev.js" },
+		"./evaluation": { "types": "./dist/evaluation.d.ts", "import": "./dist/evaluation.js" },
+		"./learning": { "types": "./dist/learning.d.ts", "import": "./dist/learning.js" }
+	},
+	"files": ["dist", "README.md"],
+	"scripts": { "build": "tsgo -p tsconfig.build.json", "clean": "shx rm -rf dist", "test": "vitest --run" },
+	"license": "MIT",
+	"dependencies": { "@typesafe-ai/sdk": "0.6.0" },
+	"engines": { "node": ">=22.19.0" }
+}

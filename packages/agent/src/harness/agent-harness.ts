@@ -527,7 +527,13 @@ export interface AgentHarnessOptions<TContext extends object | undefined = objec
 	activeToolNames?: string[];
 	tools?: AgentHarnessTool<TContext>[];
 	toolContext?: TContext | ((context: Context) => TContext | Promise<TContext>);
-	systemPrompt?: string | ((toolContext: TContext, context: Context) => string | Promise<string>);
+	systemPrompt?:
+		| string
+		| ((
+				toolContext: TContext,
+				context: Context,
+				configuration: Readonly<LaneConfiguration>,
+		  ) => string | Promise<string>);
 	resources?: Resources;
 	streamOptions?: AgentHarnessStreamOptions;
 	retry?: RetryPolicy;

@@ -1,0 +1,4 @@
+{
+	"schemaVersion": 1,
+	"policies": ["routing.json", "output.json", "phases.json", "skills.json", "retrieval.json", "review.json", "completion.json", "context.json"]
+}

@@ -13,6 +13,7 @@
  * Modes use this class and add their own I/O layer on top.
  */
 
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { basename, dirname } from "node:path";
 import type {
@@ -25,7 +26,7 @@ import type {
 	PrepareNextTurnContext,
 	ThinkingLevel,
 } from "@earendil-works/pi-agent-core";
-import { contentText, getCurrentSystemMessage, retryDelayMs } from "@earendil-works/pi-ai";
+import { contentText, getCurrentSystemMessage, retryDelayMs, toToolDeclaration } from "@earendil-works/pi-ai";
 import type {
 	AssistantMessage,
 	AuthResult,
@@ -66,10 +67,13 @@ import {
 	prepareCompaction,
 	shouldCompact,
 } from "./compaction/index.ts";
+import { estimateRequestTokens, isSafeContextSelection } from "./context-budget.ts";
 import { DEFAULT_THINKING_LEVEL, THINKING_LEVEL_OPTIONS } from "./defaults.ts";
 import { exportSessionToHtml, type ToolHtmlRenderer } from "./export-html/index.ts";
 import { createToolHtmlRenderer } from "./export-html/tool-renderer.ts";
 import {
+	type ContextManagementEvent,
+	type ContextManagementResult,
 	type ContextUsage,
 	type ExtensionCommandContextActions,
 	type ExtensionErrorListener,
@@ -80,6 +84,7 @@ import {
 	type MessageEndEvent,
 	type MessageStartEvent,
 	type MessageUpdateEvent,
+	type ModelSelectionOptions,
 	type ReplacedSessionContext,
 	type SessionBeforeCompactResult,
 	type SessionBeforeTreeResult,
@@ -260,7 +265,7 @@ export interface PromptOptions {
 }
 
 /** Options for model/thinking mutations. */
-export interface ModelMutationOptions {
+export interface ModelMutationOptions extends ModelSelectionOptions {
 	/** Persist the new value to global defaults. Defaults to session-only. */
 	persist?: boolean;
 }
@@ -321,6 +326,7 @@ export class AgentSession {
 	private _unsubscribeAgent?: () => void;
 	private _eventListeners: AgentSessionEventListener[] = [];
 	private _isAgentRunActive = false;
+	private _generationPreparationAbortController?: AbortController;
 	private _idleWaitPromise: Promise<void> | undefined;
 	private _resolveIdleWait: (() => void) | undefined;
 
@@ -382,6 +388,7 @@ export class AgentSession {
 	private _baseSystemPromptOptions!: NormalizedBuildSystemPromptOptions;
 	/** Prompt options after before_agent_start mutations for the active run. */
 	private _runSystemPromptOptions?: NormalizedBuildSystemPromptOptions;
+	private _contextSelection?: { source: AgentMessage[]; result: ContextManagementResult };
 
 	constructor(config: AgentSessionConfig) {
 		this.agent = config.agent;
@@ -544,6 +551,8 @@ export class AgentSession {
 	}
 
 	private async _compactBeforeNextAssistantResponse(context: AgentContext): Promise<AgentContext> {
+		// Managed selection owns capacity after routing and before prompt construction.
+		if (this._extensionRunner.hasHandlers("context_management")) return context;
 		const model = this.model;
 		const settings = this.settingsManager.getCompactionSettings(model);
 
@@ -571,7 +580,7 @@ export class AgentSession {
 		this.agent.prepareNextTurnWithContext = async (turn, signal) => {
 			const context = await this._compactBeforeNextAssistantResponse(turn.context);
 			const previousSnapshot = await previousPrepareNextTurnWithContext?.({ ...turn, context }, signal);
-			const nextContext = previousSnapshot?.context ?? context;
+			let nextContext = previousSnapshot?.context ?? context;
 			const runOptions = this._runSystemPromptOptions ?? this._baseSystemPromptOptions;
 			const options = normalizeBuildSystemPromptOptions({
 				...runOptions,
@@ -579,6 +588,13 @@ export class AgentSession {
 				toolSnippets: { ...this._baseSystemPromptOptions.toolSnippets, ...runOptions.toolSnippets },
 				toolGuidelines: { ...this._baseSystemPromptOptions.toolGuidelines, ...runOptions.toolGuidelines },
 			});
+			await this._emitBeforeGeneration(false, options, signal);
+			const preparedSource = await this._prepareContextSelection(
+				[...nextContext.messages, ...(previousSnapshot?.messages ?? []), ...(turn.pendingMessages ?? [])],
+				options,
+				signal,
+			);
+			if (preparedSource.compacted) nextContext = { ...nextContext, messages: this.agent.state.messages.slice() };
 			const updateMessage = this._preparePromptAndToolLoadout(options, nextContext.messages);
 			// Keep session.systemPrompt and ctx.getSystemPrompt() in step with what the provider sees.
 			this._runSystemPromptOptions = options;
@@ -596,6 +612,25 @@ export class AgentSession {
 				thinkingLevel: this.agent.state.thinkingLevel,
 			};
 		};
+	}
+
+	private async _emitBeforeGeneration(
+		initial: boolean,
+		options: NormalizedBuildSystemPromptOptions,
+		signal: AbortSignal | undefined,
+	): Promise<void> {
+		signal?.throwIfAborted();
+		const selectedBefore = [...options.selectedTools];
+		const activeBefore = this.getActiveToolNames();
+		await this._extensionRunner.emit({ type: "before_generation", initial, signal, systemPromptOptions: options });
+		signal?.throwIfAborted();
+		const activeAfter = this.getActiveToolNames();
+		const explicitlyEdited =
+			options.selectedTools.length !== selectedBefore.length ||
+			options.selectedTools.some((name, index) => name !== selectedBefore[index]);
+		const changedLive =
+			activeAfter.length !== activeBefore.length || activeAfter.some((name, index) => name !== activeBefore[index]);
+		if (!explicitlyEdited && changedLive) options.selectedTools = activeAfter;
 	}
 
 	// =========================================================================
@@ -897,6 +932,7 @@ export class AgentSession {
 	 */
 	dispose(): void {
 		try {
+			this._generationPreparationAbortController?.abort();
 			this.abortRetry();
 			this.abortCompaction();
 			this.abortBranchSummary();
@@ -935,12 +971,12 @@ export class AgentSession {
 
 	/** Whether the session is currently processing an agent run or post-run continuation. */
 	get isStreaming(): boolean {
-		return this._isAgentRunActive;
+		return this._isAgentRunActive || this._generationPreparationAbortController !== undefined;
 	}
 
 	/** Whether the session has no active agent run, compaction, branch summary, retry, or queued continuation. */
 	get isIdle(): boolean {
-		return !this._isAgentRunActive && !this.isCompacting;
+		return !this.isStreaming && !this.isCompacting;
 	}
 
 	/** Current effective system prompt, including changes not yet sent to the model. */
@@ -1140,7 +1176,7 @@ export class AgentSession {
 	 */
 	private _installAgentForcedPromptProjection(): void {
 		const previousTransformContext = this.agent.transformContext;
-		this.agent.transformContext = async (messages, signal) => {
+		const project = async (messages: AgentMessage[], signal?: AbortSignal): Promise<AgentMessage[]> => {
 			const transformed = previousTransformContext ? await previousTransformContext(messages, signal) : messages;
 			const forced = this._runSystemPromptOptions?.forceSystemPrompt;
 			if (forced === undefined) return transformed;
@@ -1152,6 +1188,168 @@ export class AgentSession {
 				timestamp: current?.timestamp ?? Date.now(),
 			};
 			return [head, ...transformed.filter((message) => message.role !== "system")];
+		};
+		this.agent.transformContext = async (messages, signal) => {
+			if (!this._extensionRunner.hasHandlers("context_management")) return project(messages, signal);
+			return project(this._applyContextSelection(messages), signal);
+		};
+	}
+
+	private async _prepareContextSelection(
+		messages: AgentMessage[],
+		options: NormalizedBuildSystemPromptOptions,
+		signal?: AbortSignal,
+	): Promise<{ compacted: boolean }> {
+		this._contextSelection = undefined;
+		if (!this._extensionRunner.hasHandlers("context_management")) return { compacted: false };
+		let source = structuredClone(messages.filter((message) => message.role !== "system"));
+		let result = await this._manageContext("prepare", source, signal, undefined, options);
+		let compacted = false;
+		if (result.action === "compact") {
+			const existing = new Set(this.agent.state.messages.map((message) => JSON.stringify(message)));
+			const pending = source.filter((message) => !existing.has(JSON.stringify(message)));
+			await this._runAutoCompaction("threshold", false, true, signal);
+			signal?.throwIfAborted();
+			compacted = true;
+			source = structuredClone([
+				...this.agent.state.messages.filter((message) => message.role !== "system"),
+				...pending,
+			]);
+			result = await this._manageContext("prepare-after-summary", source, signal, undefined, options);
+			if (result.action !== "selected")
+				throw new Error("Context capacity exceeded after summary fallback; reduce input or select a larger model");
+		}
+		this._contextSelection = { source, result };
+		return { compacted };
+	}
+
+	private _applyContextSelection(messages: AgentMessage[]): AgentMessage[] {
+		const plan = this._contextSelection;
+		if (!plan || plan.result.action !== "selected") return messages;
+		const source = messages.filter((message) => message.role !== "system");
+		// Input queued while preparation runs remains protected and is delivered unchanged.
+		// No semantic evaluation or admission runs after prompt construction.
+		if (JSON.stringify(source.slice(0, plan.source.length)) !== JSON.stringify(plan.source))
+			throw new Error("Context preparation became stale");
+		const keptCalls = new Set(
+			plan.result.messages.flatMap((message) =>
+				message.role === "assistant"
+					? message.content.filter((part) => part.type === "toolCall").map((part) => part.id)
+					: [],
+			),
+		);
+		const omitted = new Set(
+			plan.source.flatMap((message) =>
+				message.role === "assistant"
+					? message.content.flatMap((part) =>
+							part.type === "toolCall" && !keptCalls.has(part.id) ? [part.id] : [],
+						)
+					: [],
+			),
+		);
+		const results = new Map(
+			plan.result.messages
+				.filter((message) => message.role === "toolResult")
+				.map((message) => [message.toolCallId, message]),
+		);
+		const seenResultIds = new Set<string>();
+		for (const message of plan.source) {
+			if (message.role !== "toolResult") continue;
+			if (seenResultIds.has(message.toolCallId)) results.delete(message.toolCallId);
+			seenResultIds.add(message.toolCallId);
+		}
+		return messages.flatMap((message): AgentMessage[] => {
+			if (message.role === "toolResult")
+				return omitted.has(message.toolCallId) ? [] : [results.get(message.toolCallId) ?? message];
+			if (
+				message.role !== "assistant" ||
+				!message.content.some((part) => part.type === "toolCall" && omitted.has(part.id))
+			)
+				return [message];
+			const content = message.content.filter((part) => part.type !== "toolCall" || !omitted.has(part.id));
+			return content.length ? [{ ...message, content }] : [];
+		});
+	}
+
+	private async _manageContext(
+		reason: ContextManagementEvent["reason"],
+		messages: AgentMessage[],
+		signal?: AbortSignal,
+		customInstructions?: string,
+		options = this._runSystemPromptOptions ?? this._baseSystemPromptOptions,
+	): Promise<ContextManagementResult> {
+		const model = this.model;
+		if (!model) throw new Error(formatNoModelSelectedMessage());
+		const reserveTokens = Math.max(this.settingsManager.getCompactionSettings(model).reserveTokens, model.maxTokens);
+		const maximum = Math.max(0, model.contextWindow - reserveTokens);
+		const tools = options.selectedTools.flatMap((name) => {
+			const tool = this._toolRegistry.get(name);
+			return tool ? [toToolDeclaration(tool)] : [];
+		});
+		const promptOverheadTokens = Math.ceil(Buffer.byteLength(JSON.stringify(options), "utf8") / 3);
+		const revision = JSON.stringify({
+			model: model.id,
+			provider: model.provider,
+			effort: this.thinkingLevel,
+			tools: this.agent.state.tools.map(toToolDeclaration),
+		});
+		const sourceRevision = JSON.stringify(this.agent.state.messages);
+		const result = await this._extensionRunner.emitContextManagement({
+			type: "context_management",
+			reason,
+			messages,
+			tools,
+			model,
+			reserveTokens,
+			promptOverheadTokens,
+			promptIdentity: createHash("sha256")
+				.update(JSON.stringify({ options, tools, model: model.id, provider: model.provider }))
+				.digest("hex"),
+			signal,
+			customInstructions,
+		});
+		signal?.throwIfAborted();
+		if (
+			sourceRevision !== JSON.stringify(this.agent.state.messages) ||
+			revision !==
+				JSON.stringify({
+					model: this.model?.id,
+					provider: this.model?.provider,
+					effort: this.thinkingLevel,
+					tools: this.agent.state.tools.map(toToolDeclaration),
+				})
+		)
+			throw new Error("Context preparation became stale");
+		const maxInputTokens =
+			result && Number.isFinite(result.maxInputTokens) && result.maxInputTokens >= 0
+				? Math.min(maximum, result.maxInputTokens)
+				: maximum;
+		const selected =
+			result?.action === "selected" ? result.messages : result?.action === "compact" ? undefined : messages;
+		if (
+			Array.isArray(selected) &&
+			isSafeContextSelection(messages, selected) &&
+			estimateRequestTokens(selected, tools) + promptOverheadTokens <= maxInputTokens
+		)
+			return { action: "selected", messages: selected, maxInputTokens };
+		return { action: "compact", maxInputTokens };
+	}
+
+	private async _selectBeforeCompaction(
+		reason: "manual" | "threshold" | "overflow",
+		signal: AbortSignal,
+		customInstructions?: string,
+	): Promise<CompactionResult | undefined> {
+		if (!this._extensionRunner.hasHandlers("context_management")) return undefined;
+		const messages = this.agent.state.messages.filter((message) => message.role !== "system");
+		const result = await this._manageContext(reason, messages, signal, customInstructions);
+		if (result.action !== "selected") return undefined;
+		return {
+			strategy: "selection",
+			summary: "",
+			firstKeptEntryId: this.sessionManager.getBranch().find((entry) => entry.type === "message")?.id ?? "",
+			tokensBefore: estimateRequestTokens(messages, this.agent.state.tools),
+			estimatedTokensAfter: estimateRequestTokens(result.messages, this.agent.state.tools),
 		};
 	}
 
@@ -1176,12 +1374,48 @@ export class AgentSession {
 	private async _runAgentPrompt(messages: AgentMessage | AgentMessage[]): Promise<void> {
 		this._isAgentRunActive = true;
 		try {
+			// Custom messages can start a run without going through prompt().
+			if (!this._runSystemPromptOptions) {
+				const options = normalizeBuildSystemPromptOptions(this._baseSystemPromptOptions);
+				this._generationPreparationAbortController = new AbortController();
+				await this._emitBeforeGeneration(false, options, this._generationPreparationAbortController.signal);
+				await this._prepareContextSelection(
+					[...this.agent.state.messages, ...(Array.isArray(messages) ? messages : [messages])],
+					options,
+					this._generationPreparationAbortController.signal,
+				);
+				const update = this._preparePromptAndToolLoadout(options);
+				this._runSystemPromptOptions = options;
+				if (update) messages = [update, ...(Array.isArray(messages) ? messages : [messages])];
+				this._generationPreparationAbortController = undefined;
+			}
 			await this.agent.prompt(messages);
 			while (await this._handlePostAgentRun()) {
+				const options = this._runSystemPromptOptions ?? this._baseSystemPromptOptions;
+				this._generationPreparationAbortController = new AbortController();
+				try {
+					await this._prepareContextSelection(
+						this.agent.state.messages,
+						options,
+						this._generationPreparationAbortController.signal,
+					);
+					if (this._extensionRunner.hasHandlers("context_management")) {
+						const update = this._preparePromptAndToolLoadout(options);
+						if (update) {
+							this.agent.state.messages.push(update);
+							await this._handleAgentEvent({ type: "message_start", message: update });
+							await this._handleAgentEvent({ type: "message_end", message: update });
+						}
+					}
+				} finally {
+					this._generationPreparationAbortController = undefined;
+				}
 				await this.agent.continue();
 			}
 		} finally {
+			this._generationPreparationAbortController = undefined;
 			this._runSystemPromptOptions = undefined;
+			this._contextSelection = undefined;
 			this._flushPendingBashMessages();
 			this._flushPendingCustomMessages();
 			await this._emitAgentSettled();
@@ -1251,6 +1485,7 @@ export class AgentSession {
 		const expandPromptTemplates = options?.expandPromptTemplates ?? true;
 		const preflightResult = options?.preflightResult;
 		let messages: AgentMessage[] | undefined;
+		let preparation: AbortController | undefined;
 
 		try {
 			// Handle extension commands first (execute immediately, even during streaming)
@@ -1358,6 +1593,8 @@ export class AgentSession {
 			this._pendingNextTurnMessages = [];
 
 			// Emit before_agent_start extension event
+			preparation = new AbortController();
+			this._generationPreparationAbortController = preparation;
 			const selectedToolsBefore = this._baseSystemPromptOptions.selectedTools;
 			const result = await this._extensionRunner.emitBeforeAgentStart(
 				expandedText,
@@ -1382,12 +1619,25 @@ export class AgentSession {
 					timestamp: Date.now(),
 				});
 			}
+			await this._emitBeforeGeneration(true, result.systemPromptOptions, preparation.signal);
+			await this._prepareContextSelection(
+				[...this.agent.state.messages, ...messages],
+				result.systemPromptOptions,
+				preparation.signal,
+			);
 			const updateMessage = this._preparePromptAndToolLoadout(result.systemPromptOptions);
 			this._runSystemPromptOptions = result.systemPromptOptions;
 			if (updateMessage) messages.unshift(updateMessage);
+			// Hand preparation directly to the run; waitForIdle must not observe an idle gap.
+			this._isAgentRunActive = true;
 		} catch (error) {
 			preflightResult?.(false);
 			throw error;
+		} finally {
+			if (preparation && this._generationPreparationAbortController === preparation) {
+				this._generationPreparationAbortController = undefined;
+				this._resolveIdleWaitIfIdle();
+			}
 		}
 
 		if (!messages) {
@@ -1711,6 +1961,7 @@ export class AgentSession {
 	 * Abort current operation and wait for agent to become idle.
 	 */
 	async abort(): Promise<void> {
+		this._generationPreparationAbortController?.abort();
 		this.abortRetry();
 		this.abortCompaction();
 		this.abortBranchSummary();
@@ -1750,8 +2001,19 @@ export class AgentSession {
 	 * @throws Error if no auth is configured for the model
 	 */
 	async setModel(model: Model<any>, options: ModelMutationOptions = {}): Promise<void> {
-		if (!(await this._modelRuntime.checkAuth(model.provider))) {
+		options.signal?.throwIfAborted();
+		if (!(await this._modelRuntime.checkAuth(model.provider, { signal: options.signal }))) {
 			throw new Error(`No API key for ${model.provider}/${model.id}`);
+		}
+		options.signal?.throwIfAborted();
+		if (options.beforeApply && !options.beforeApply()) throw new DOMException("Stale model selection", "AbortError");
+		const configuration = options.configuration;
+		if (
+			configuration &&
+			(!getSupportedThinkingLevels(model).includes(configuration.effort) ||
+				configuration.tools.some((name) => !this._toolRegistry.has(name)))
+		) {
+			throw new Error("Invalid model configuration");
 		}
 
 		const previousModel = this.model;
@@ -1766,7 +2028,16 @@ export class AgentSession {
 		// Apply thinking level for the new model.
 		// Per-model thinking level overrides take priority over the global default.
 		// Model persistence does not implicitly rewrite the global thinking default.
-		this.setThinkingLevel(thinkingLevel);
+		if (configuration) {
+			const previousLevel = this.thinkingLevel;
+			this.agent.state.thinkingLevel = configuration.effort;
+			if (previousLevel !== configuration.effort)
+				this.sessionManager.appendThinkingLevelChange(configuration.effort);
+			this.setActiveToolsByName([...configuration.tools]);
+			if (previousLevel !== configuration.effort) this._emitThinkingLevelChange(configuration.effort, previousLevel);
+		} else {
+			this.setThinkingLevel(thinkingLevel);
+		}
 
 		await this._emitModelSelect(model, previousModel, "set");
 	}
@@ -1900,13 +2171,13 @@ export class AgentSession {
 
 		if (isChanging) {
 			this.sessionManager.appendThinkingLevelChange(effectiveLevel);
-			this._emit({ type: "thinking_level_changed", level: effectiveLevel });
-			void this._extensionRunner.emit({
-				type: "thinking_level_select",
-				level: effectiveLevel,
-				previousLevel,
-			});
+			this._emitThinkingLevelChange(effectiveLevel, previousLevel);
 		}
+	}
+
+	private _emitThinkingLevelChange(level: ThinkingLevel, previousLevel: ThinkingLevel): void {
+		this._emit({ type: "thinking_level_changed", level });
+		void this._extensionRunner.emit({ type: "thinking_level_select", level, previousLevel });
 	}
 
 	/**
@@ -2050,6 +2321,22 @@ export class AgentSession {
 			}
 
 			const settings = this.settingsManager.getCompactionSettings(model);
+			const selection = await this._selectBeforeCompaction(
+				"manual",
+				this._compactionAbortController.signal,
+				customInstructions,
+			);
+			if (selection) {
+				this._clearManualCompactionState();
+				this._emit({
+					type: "compaction_end",
+					reason: "manual",
+					result: selection,
+					aborted: false,
+					willRetry: false,
+				});
+				return selection;
+			}
 			const { model: requestModel, apiKey, headers, env } = await this._getSummarizationRequestAuth(model);
 
 			const pathEntries = this.sessionManager.getBranch();
@@ -2297,6 +2584,7 @@ export class AgentSession {
 		}
 
 		// Case 3: threshold compaction without retry.
+		if (this._extensionRunner.hasHandlers("context_management")) return false;
 		// For error messages or all-zero usage messages, estimate from the last valid response.
 		// This ensures sessions that hit persistent API errors (e.g. 529) or malformed zero-usage
 		// responses can still compact and do not reset context accounting.
@@ -2340,15 +2628,33 @@ export class AgentSession {
 	 * @param willRetry Whether to continue the interrupted turn after overflow compaction
 	 * @returns Whether the post-run loop should call `agent.continue()`
 	 */
-	private async _runAutoCompaction(reason: "overflow" | "threshold", willRetry: boolean): Promise<boolean> {
+	private async _runAutoCompaction(
+		reason: "overflow" | "threshold",
+		willRetry: boolean,
+		skipSelection = false,
+		parentSignal?: AbortSignal,
+	): Promise<boolean> {
 		const model = this.model;
 		const settings = this.settingsManager.getCompactionSettings(model);
 		let started = false;
 		let fromExtension = false;
+		const abort = () => this._autoCompactionAbortController?.abort();
 
 		try {
 			if (!model) {
 				return false;
+			}
+			this._autoCompactionAbortController = new AbortController();
+			parentSignal?.throwIfAborted();
+			parentSignal?.addEventListener("abort", abort, { once: true });
+			if (!skipSelection && this._extensionRunner.hasHandlers("context_management")) {
+				this._emit({ type: "compaction_start", reason });
+				started = true;
+				const selection = await this._selectBeforeCompaction(reason, this._autoCompactionAbortController.signal);
+				if (selection) {
+					this._emit({ type: "compaction_end", reason, result: selection, aborted: false, willRetry });
+					return willRetry || this.agent.hasQueuedMessages();
+				}
 			}
 
 			const { model: requestModel, apiKey, headers, env } = await this._getSummarizationRequestAuth(model);
@@ -2357,11 +2663,12 @@ export class AgentSession {
 
 			const preparation = prepareCompaction(pathEntries, settings);
 			if (!preparation) {
+				if (started)
+					this._emit({ type: "compaction_end", reason, result: undefined, aborted: false, willRetry: false });
 				return false;
 			}
 
-			this._emit({ type: "compaction_start", reason });
-			this._autoCompactionAbortController = new AbortController();
+			if (!started) this._emit({ type: "compaction_start", reason });
 			started = true;
 
 			let extensionCompaction: CompactionResult | undefined;
@@ -2521,6 +2828,7 @@ export class AgentSession {
 			}
 			return false;
 		} finally {
+			parentSignal?.removeEventListener("abort", abort);
 			this._autoCompactionAbortController = undefined;
 			this._resolveIdleWaitIfIdle();
 		}
@@ -2706,10 +3014,15 @@ export class AgentSession {
 				setActiveTools: (toolNames) => this.setActiveToolsByName(toolNames),
 				refreshTools: () => this._refreshToolRegistry(),
 				getCommands,
-				setModel: async (model) => {
+				setModel: async (model, options) => {
 					if (!this._modelRuntime.hasConfiguredAuth(model.provider)) return false;
-					await this.setModel(model);
-					return true;
+					try {
+						await this.setModel(model, options);
+						return true;
+					} catch (error) {
+						if (error instanceof Error && error.name === "AbortError") return false;
+						throw error;
+					}
 				},
 				getThinkingLevel: () => this.thinkingLevel,
 				setThinkingLevel: (level) => this.setThinkingLevel(level),
@@ -2719,8 +3032,9 @@ export class AgentSession {
 				getScopedModels: () => this._scopedModels,
 				isIdle: () => this.isIdle,
 				isProjectTrusted: () => this.settingsManager.isProjectTrusted(),
-				getSignal: () => this.agent.signal,
+				getSignal: () => this._generationPreparationAbortController?.signal ?? this.agent.signal,
 				abort: () => {
+					this._generationPreparationAbortController?.abort();
 					if (this._extensionAbortHandler) {
 						this._extensionAbortHandler();
 						return;

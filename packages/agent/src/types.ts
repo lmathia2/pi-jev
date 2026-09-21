@@ -150,7 +150,10 @@ export interface AgentLoopTurnUpdate {
 	thinkingLevel?: ThinkingLevel;
 }
 
-export interface PrepareNextTurnContext extends ShouldStopAfterTurnContext {}
+export interface PrepareNextTurnContext extends ShouldStopAfterTurnContext {
+	/** Queued input known before preparation; the loop appends it afterward. Additional steering may arrive while preparing. */
+	pendingMessages: readonly AgentMessage[];
+}
 
 export interface AgentLoopConfig extends SimpleStreamOptions {
 	model: Model<any>;

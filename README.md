@@ -25,55 +25,239 @@ To learn more about Pi:
 
 ## Jev integration
 
-The normal coding-agent startup path reads Jev settings and installs a provider-neutral generation-routing component. The component has two implementations:
+`jev.mode: "decisions"` enables a shared decision library with configurable implementations and policies. The normal CLI and default SDK startup install the configured components after settings and project trust are resolved. Everything is opt-in. See the [architecture decisions](docs/adr/README.md), [implementation log](docs/jev-implementation-log.md), and [experiment checklist](docs/jev-experiments.md).
 
-- the default provider returns no override, preserving ordinary Pi behavior;
-- the Jev provider classifies the task as `fast`, `standard`, `deep`, or `research`, then maps the selected route to an explicitly configured model, thinking level, and tool allowlist.
+Jev replaces selected **judgments**, not the execution engine. Pi still builds prompts, calls the selected model, validates tool arguments, executes tools, stores sessions and performs compaction. A Jev proposal cannot grant permissions or invent an available model/tool.
 
-Jev never generates tool arguments, executes tools, grants permissions, or bypasses Pi's model and tool registries.
+### What changes when enabled
+
+| Component | Decision and integration point | Disabled behavior |
+|---|---|---|
+| Routing | Select a complete model, reasoning-effort and tool preset in `before_generation`, before prompt/schema assembly; use private harness state and deterministic cache-cost admission | Keep the current configuration |
+| Phase classification | Classify newly settled tool-result boundaries against configured allowed transitions; only an admitted phase change permits another route decision | Explicit `/decision-phase <name>` transitions only |
+| Skills | Select visibility from loaded skill descriptions before route pricing and prompt assembly; retain explicit requests and pin selection within the phase | Normal loaded-skill visibility |
+| Retrieval | Select grouped hits from settled built-in `grep`/`find` output; preserve required hits and exact originals | Return original search results |
+| Output | Select blocks from configured tools' fresh text output; preserve errors, protected evidence and exact originals | Return original tool output |
+| Tool review | Review a proposed call and optionally block it before execution; `request_review` blocks with an explanation, not an approval dialog | Existing tool-call path |
+| Completion | Inspect the final result and recent evidence; request bounded verification or clarification through the existing follow-up queue | End the run normally |
+| Context | Score historical tool calls/results and select a recoverable view within an estimated budget **before prompt construction**; optional cache-aware reuse; selection also precedes manual/overflow compaction | Existing Pi context and summarization |
+
+Routing and skill selection share one phase owner. Ordinary turns and retries do not trigger model switching. Model, effort and tools commit together in memory after authorization/freshness checks; later user or extension changes take precedence. This is not a transactional disk commit. See [ADR 2](docs/adr/0002-phase-boundaries-and-host-authority.md).
+
+Cache estimates compare future stay/switch cost, charging a cold target once. Tool/effort changes are conservatively treated as cache-breaking. Prices come from the model registry; expected remaining work and margins are configurable estimates, not measured savings. Smaller-window candidates require enabled context management and a preliminary feasibility floor. Context selection then checks the selected model's estimated budget before prompt construction; the floor does not guarantee that relevant evidence will fit.
 
 ### Runtime modes
 
 | Mode | Behavior |
 |---|---|
-| `off` | Default. No Jev client or routing extension is created. |
-| `shadow` | Starts the Jev request asynchronously and records its result without delaying or changing the main path. |
-| `route` | Waits for a validated Jev decision and applies the configured route profile before the agent run. |
+| `off` | Default. No decision inference or routing. Local recall remains available on resumed branches containing previously reduced output. |
+| `decisions` | Shared registry, phase/cache-aware routing and individually enabled components. Baseline/heuristic implementations need no Jev key. |
+| `route` | Legacy `fast`/`standard`/`deep`/`research` task classifier and partial route profiles. Does **not** have the new phase/cache guarantees. |
 
-Set `TYPESAFE_API_KEY` in the environment, then configure `~/.pi/agent/settings.json` or project-local `.pi/settings.json`:
+### Start with routing, without remote decisions
+
+Set `~/.pi/agent/settings.json` or trusted project-local `.pi/settings.json`. This baseline exercises the integration but deliberately keeps the current configuration. Replace the provider/model placeholders with an authenticated model from your registry. Each preset supplies all three choices; omitted tools are not inherited.
 
 ```json
 {
   "jev": {
-    "mode": "route",
-    "timeoutMs": 5000,
-    "minProbability": 0.7,
-    "minFit": 0.7,
-    "routes": {
-      "fast": { "thinkingLevel": "low", "tools": ["read", "grep"] },
-      "standard": { "thinkingLevel": "medium" },
-      "deep": { "thinkingLevel": "high" },
-      "research": { "thinkingLevel": "high", "tools": ["read", "grep"] }
+    "mode": "decisions",
+    "decisions": {
+      "routing": {
+        "binding": { "implementation": "baseline.keep-current", "policy": {} },
+        "phases": ["investigate", "implement", "verify"],
+        "requiredTools": ["read"],
+        "routes": [{
+          "id": "approved-low",
+          "description": "Approved model with low reasoning",
+          "provider": "YOUR_PROVIDER",
+          "model": "YOUR_MODEL",
+          "effort": "low",
+          "tools": ["read", "grep", "find", "bash", "edit", "write"]
+        }],
+        "timeoutMs": 5000,
+        "maxDecisions": 100,
+        "estimate": {
+          "requests": 3,
+          "outputTokens": 4000,
+          "marginUsd": 0.01,
+          "decisionCostUsd": 0.001
+        }
+      }
     }
   }
 }
 ```
 
-A route may also set `provider` and `model` together. Unknown routes, unavailable models or tools, missing authentication, low probability or fit, timeouts, rate limits, malformed responses, and provider errors all preserve the current Pi configuration.
+Those numeric estimates are examples to calibrate, not recommended tariffs. An economic switch must clear `marginUsd`. Optional `routing.escalationMaxUsd` permits a non-saving capability switch under a known estimated cost cap. Unknown economics do not establish savings. Unsupported effort, missing auth/tools, scoped-model restrictions, cancellation or stale state prevent application.
 
-### Decision points in the code
+### Enable Jev and individual components
 
-| Decision point | Code | Runtime status | Default behavior |
-|---|---|---|---|
-| Generation route | [`generation-routing.ts`](packages/coding-agent/src/core/generation-routing.ts), [`runtime.ts`](packages/coding-agent/src/jev/runtime.ts) | Automatically wired into normal session startup according to `jev.mode` | Keep the current model, thinking level, and tools |
-| Durable pre-generation route | [`generation-router.ts`](packages/coding-agent/src/jev/generation-router.ts) | Available to low-level `AgentHarness` hosts | Return no generation patch |
-| Skill, tool, or specialist selection | [`selectJevCandidate`](packages/coding-agent/src/jev/client.ts) | Available to callers with a bounded candidate list | Keep the caller's existing selection path |
-| Context selection | [`selectJevContext`](packages/coding-agent/src/jev/context-selector.ts) | Available to retrieval and `transform_context` integrations | Return all original context IDs |
-| Shadow evaluation | [`shadow.ts`](packages/coding-agent/src/jev/shadow.ts) | Available separately; configured runtime shadow uses the shared routing component | Observe only; never mutate execution |
+Set `TYPESAFE_API_KEY` in the process environment. Add the following fields **inside `jev.decisions`**, alongside the routing configuration above. Relative package paths resolve against the session working directory. The [sample policy package](packages/decisions/examples/policies/manifest.json) is editable JSON; copy it for your own versioned policies.
 
-Routing writes privacy-safe `generation-route` session entries containing the turn, selected route, probability, fit, applied profile, or fallback reason. It does not store the task prompt, repository contents, tool output, or API key.
+```json
+{
+  "policyPackages": ["packages/decisions/examples/policies"],
+  "policyReferences": {
+    "generation.route/v1": "example/routing@1",
+    "generation.phase/v1": "example/phases@1",
+    "skills.select/v1": "example/skills@1",
+    "retrieval.rank/v1": "example/retrieval@1",
+    "output.select/v1": "example/output@1",
+    "tools.review/v1": "example/review@1",
+    "completion.verify/v1": "example/completion@1"
+  },
+  "components": {
+    "skills": true,
+    "retrieval": { "minChars": 2000, "maxChars": 20000, "minReduction": 0.2 },
+    "output": { "tools": ["bash"], "minChars": 4000, "maxChars": 20000, "blockLines": 20, "minReduction": 0.2 },
+    "review": { "tools": ["bash", "edit", "write"], "onFailure": "block" },
+    "completion": {
+      "maxPasses": 1,
+      "followUps": {
+        "verify": "Verify the claimed result and report unresolved failed checks.",
+        "clarify": "Ask for the missing information or authority required to finish."
+      }
+    }
+  },
+  "timeoutMs": 5000,
+  "maxComponentDecisions": 100
+}
+```
 
-Checkpoint control and selective compaction are intentionally not active. The existing Pi loop and compaction remain authoritative until offline evaluation justifies those changes. See [`docs/jev-harness.md`](docs/jev-harness.md) for assumptions, invariants, implementation status, and deferred work.
+When enabling output or retrieval with routing, add `recall_output` to **both** `routing.requiredTools` and **every** preset's `tools`. The extension registers it; the model can then recover exact original output. Retrieval takes precedence over generic output selection for `grep`/`find`; truncated search results are left unchanged. Neither component selectively compacts transcript history.
+
+For the phase binding above, also add these fields to `routing`:
+
+```json
+{
+  "transitions": { "investigate": ["implement"], "implement": ["verify"], "verify": ["implement"] },
+  "phaseDescriptions": {
+    "investigate": "Gather evidence and identify the change.",
+    "implement": "Make the authorized change.",
+    "verify": "Check the result against acceptance criteria."
+  },
+  "maxPhaseDecisions": 30
+}
+```
+
+References override inline `bindings` and routing bindings. Enabled components require matching bindings; skills also require routing. Invalid bundles are disabled together with a startup warning. A missing Jev key cannot silently substitute another implementation. Review failures obey `onFailure`; other failed selections retain existing content/configuration, except observed unresolved tool failures can still request bounded completion verification.
+
+### Enable context management
+
+This standalone configuration needs `TYPESAFE_API_KEY`, but does not require routing:
+
+```json
+{
+  "jev": {
+    "mode": "decisions",
+    "decisions": {
+      "policyPackages": ["packages/decisions/examples/policies"],
+      "policyReferences": { "context.retention/v1": "example/context@1" },
+      "components": {
+        "context": {
+          "cacheAware": true,
+          "cacheExpectedRequests": 3,
+          "cacheMinSavingsUsd": 0,
+          "safetyMarginTokens": 2048,
+          "triggerRatio": 0.9,
+          "targetRatio": 0.75,
+          "keepThreshold": 0.3,
+          "preserveRecentMessages": 6,
+          "excerptChars": 1200,
+          "recallMaxChars": 4000
+        }
+      }
+    }
+  }
+}
+```
+
+With routing, add `recall_context` to `routing.requiredTools` and every preset's `tools`. For a network-free retain-all baseline, replace `policyPackages`/`policyReferences` with `"bindings": { "context.retention/v1": { "implementation": "baseline.keep-current", "policy": {} } }`. That baseline still permits ordinary summarization when selection cannot reduce context.
+
+The classifier sees a bounded ordered conversation overview, call inputs, result head/tail excerpts and private task/phase/model state. It scores whether the call and result remain needed separately. A needed result keeps both; a needed call keeps its input and an exact head/tail result excerpt; otherwise the complete pair is omitted. Unjudged items stay. User/assistant text, errors, multimodal results, recent messages and recall results are protected. The selector does not rewrite dialogue or claim a globally optimal subset.
+
+The order is `private state/context requirements → model/effort/tools → context selection and estimated-budget admission → prompt construction → provider`. There is one selection/admission boundary, not another decision after rendering. Skills and retrieval retain their existing selection mechanisms; context management selects historical tool evidence, not arbitrary system instructions.
+
+Selection projects the request without deleting session history. `recall_context` without an ID lists available original tool-result IDs; with `toolCallId`, it returns bounded text using `offset`/`maxChars`.
+
+With `cacheAware: true` (default), a valid branch-local plan is reused below `triggerRatio`. Task, phase, model, effort, tools, prompt configuration or failure changes invalidate reuse. Under pressure, a new proposal may be deferred if the existing view still fits and rewriting its cached prefix is estimated to cost more than the saved input over `cacheExpectedRequests`. This arithmetic uses observed same-model cache reads, the estimated unchanged prefix and registry prices; `cacheMinSavingsUsd` sets the required saving. It never preserves an oversized view or overrides a changed-task/manual/overflow decision. Unknown cache economics do not block the relevance proposal. This is a cost estimate, not a cache-hit guarantee.
+
+To disable cache-aware selection while keeping relevance selection enabled, set:
+
+```json
+{ "components": { "context": { "cacheAware": false } } }
+```
+
+Place that under `jev.decisions`, keeping the context binding above. With cache awareness off, eligible evidence is re-evaluated at every preparation boundary, even below the pressure trigger; persisted plans and rewrite-cost preference are bypassed. The same retention threshold, protected evidence, request limits, exact recall and summary fallback apply. This can spend more decision calls and invalidate more provider cache prefixes. It does not disable provider caching or the separate routing cost checks.
+
+Input capacity subtracts the host/model output reservation and `safetyMarginTokens`; `reserveOutputTokens` can raise the reservation. Pre-construction admission counts source messages/tool declarations plus estimated overhead from raw prompt configuration. It uses a UTF-8-size heuristic, **not an exact provider tokenizer**. `targetRatio` is a soft target; the estimated capacity is enforced. Insufficient selection falls back to existing Pi summarization once and re-plans before building the prompt. Oversized protected content stops preparation rather than being silently deleted.
+
+There is deliberately **no post-construction capacity gate**. Rendered overhead, late steering messages and trusted extension/payload edits can exceed the estimate; ordinary provider overflow recovery remains the fallback. Late input stays intact rather than being delayed or dropped. The legacy summarizer's own request also remains outside this estimate. [ADR 4](docs/adr/0004-context-window-management.md) explains both cache modes and these tradeoffs; [ADR 5](docs/adr/0005-decision-responsibility-map.md) documents inputs, outputs and Pi/Jev responsibilities for every decision area.
+
+Optional limits are `stateChars` (48000), `requestChars` (80000), `maxRequests` (8), `concurrency` (2), and `minReduction` (0.1). These are bounded projection/request estimates, not a tokenizer guarantee for Jev. Context batches share `maxComponentDecisions` with other configured components. Rubrics and these numerical settings are configurable for offline calibration; `keepThreshold` applies raw scores, not the adapter's selection-only `minProbability`. See [ADR 4](docs/adr/0004-context-window-management.md).
+
+Disable this component by removing `components.context` and restarting/reloading. Projection stops; the original session remains available, and branches with prior plans retain local recall even in `off` mode. Earlier ordinary summary entries are not undone.
+
+### Disable and reload
+
+Disable all new decisions:
+
+```json
+{ "jev": { "mode": "off" } }
+```
+
+Disable individual components by removing their key from `components`; `"skills": false` also disables skills. For example, `"components": { "review": { "tools": ["bash"], "onFailure": "block" } }` enables only review. Remove `routing` (and disable skills) to run components without routing. To disable automatic phase classification, remove its `policyReferences`/`bindings` entry and any inline `routing.phaseBinding`; explicit phase commands still work.
+
+Restart or use normal resource reload after settings changes. Reload resolves trusted settings again; it is not a filesystem watcher or automatic optimizer promotion. Existing phase records prevent another routing decision within the same phase. Turning decisions off stops new decisions, but does not undo an already selected model/tool preset or rewrite saved output. Select your desired model/tools normally; `recall_output` remains local and branch-scoped for saved originals, subject to host tool restrictions.
+
+Legacy `route` mode uses `jev.routes` profiles with optional `provider`+`model`, `thinkingLevel`, and `tools`; it is separate from the complete presets above. Removed `shadow` mode does not make Jev calls.
+
+### Reuse the library or supply a plugin
+
+[`@earendil-works/pi-decisions`](packages/decisions/src/index.ts) contains the contracts, registry, policy loading and built-in baseline/weighted/recorded implementations. `/jev` supplies an injected Jev transport; `/evaluation` and `/learning` supply offline comparison and artifact conversion. Importing the core does not load Jev or read credentials.
+
+For a trusted host, inject another `DecisionImplementation` without changing harness adapters:
+
+```ts
+import { createConfiguredDecisionExtension } from "@earendil-works/pi-coding-agent/jev";
+import type { DecisionImplementation } from "@earendil-works/pi-decisions";
+
+const implementation: DecisionImplementation = {
+  id: "team.current",
+  version: "1",
+  definitions: ["generation.route/v1"],
+  async evaluate(request) {
+    return request.currentCandidateId
+      ? { status: "proposed", answer: { kind: "select", candidateId: request.currentCandidateId } }
+      : { status: "abstained", reason: "no-current-candidate" };
+  }
+};
+
+// settings is your DecisionSettings object; set its routing binding to team.current.
+const decisionExtension = createConfiguredDecisionExtension(settings, { implementations: [implementation] });
+// Supply decisionExtension through your resource loader's inline extension factories.
+```
+
+Use one installation path: the configured built-in integration, or your extension supplying that integration. JSON policy packages contain data, not executable module paths. Executable plugins use the existing trusted Pi extension loader; they are not sandboxed. See [ADR 1](docs/adr/0001-reusable-decisions-and-policy-plugins.md).
+
+Custom SDK resource loaders own their extensions. With `DefaultResourceLoader`, use `finalExtensionFactories: () => createConfiguredJevExtensions(settingsManager.getJevSettings(), cwd)` from `@earendil-works/pi-coding-agent/jev` to get the same post-trust behavior. Ordinary `createAgentSession()` and CLI startup already do this.
+
+Low-level `AgentHarness` applications use [`createDecisionGenerationRouter`](packages/coding-agent/src/jev/decision-durable.ts) with their own private snapshot, candidate roster and admission callback. The selected configuration is checkpointed before the provider request and passed to the prompt callback. Those applications own durable phase/policy persistence; this separate API is not the normal CLI routing path. Custom retrieval backends can use [`selectRetrievedContext`](packages/coding-agent/src/jev/decision-selection.ts) with their own excerpts/token budgets; built-in `grep`/`find` need no such wiring.
+
+### Learn policies, not authority
+
+Instructions, criteria, probability thresholds, heuristic weights and phase descriptions are data. Compare implementations on identical frozen requests, export consented/redacted training data to jev-align/GEPA, import an accepted definition as a new policy version, then evaluate it on held-out task groups before promotion. Model/tool authority, input validation, required evidence and evaluation/spending gates remain host-owned. See [ADR 3](docs/adr/0003-evidence-and-offline-learning.md).
+
+`policyDigests` optionally pins reviewed SHA-256 artifact digests by `id@version` across restarts. The offline promotion helpers do not attest their own evaluation reports or change live settings. Run the synthetic, network-free workflow from the repository root:
+
+```sh
+node --experimental-strip-types packages/decisions/examples/learning-roundtrip.ts
+```
+
+Decision traces are metadata-only by default, but inference receives bounded task/tool text, and exact output recovery stores originals in the local session. These are not automatic secret redaction. Replay capture requires separate consent and redaction. Synthetic checks validate plumbing, not Jev quality, savings or GEPA effectiveness.
+
+Arbitrary dialogue pruning, semantic recovery and specialist dispatch remain unimplemented; tool-history selection is implemented as described above. See the [decision-point review](docs/jev-decision-points.md). Provider-backed experiments and optimizer runs are explicit [TODOs](docs/jev-experiments.md), not prerequisites hidden behind the enablement examples above.
 
 ## All Packages
 
@@ -83,6 +267,7 @@ Checkpoint control and selective compaction are intentionally not active. The ex
 | **[@earendil-works/pi-telemetry](packages/telemetry)** | Vendor-neutral telemetry contracts, reference adapter, conformance tests, and typed schemas |
 | **[@earendil-works/pi-ai](packages/ai)** | Unified multi-provider LLM API (OpenAI, Anthropic, Google, etc.) |
 | **[@earendil-works/pi-agent-core](packages/agent)** | Agent runtime with tool calling and state management |
+| **[@earendil-works/pi-decisions](packages/decisions)** | Reusable decisions, policy packages, offline comparison and learning bridge |
 | **[@earendil-works/pi-coding-agent](packages/coding-agent)** | Interactive coding agent CLI |
 | **[@earendil-works/pi-tui](packages/tui)** | Terminal UI library with differential rendering |
 

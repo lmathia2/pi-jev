@@ -1,6 +1,8 @@
 # Jev integration plan
 
-Status: implementation plan
+Status: historical implementation plan. All numbered sections below preserve earlier decisions and milestones; they are not current implementation instructions. See the [current decision-point review](jev-decision-points.md), [reusable library design](decision-library-design.md), and [implementation log](jev-implementation-log.md).
+
+Implementation update: shadow mode, its extension, and its public types remain removed. Current modes are `off` (default), legacy `route`, and opt-in `decisions`. The implemented `packages/decisions` library supplies reusable implementation plugins, immutable JSON policy artifacts, offline comparisons and learning-artifact conversion. This supersedes the earlier no-new-package restriction, shadow-first sequence and fixed route-label architecture below. Current routing occurs before model-facing prompt assembly, uses private harness state, selects configured model/effort/tool presets and considers cache cost at explicit phase boundaries. Completion uses existing end-of-run hooks; no new checkpoint hook is required. See the [experiment queue](jev-experiments.md) for measurements and remaining integrations.
 
 Product branch: `main`
 
@@ -216,7 +218,7 @@ This is a proposed shape, not a public abstraction. The first implementation sho
 | 6. Selective compaction | Deferred | `session_before_compact` can replace a summary and choose the retained tail, but cannot retain selected older tool calls/results as typed messages. A correct port of `fast-jev-compaction` therefore needs a core retained-history representation. That rewrite is not justified without compaction evaluation data. |
 | 7. Specialists | No new runtime | Existing named lanes plus the merged bounded selector already provide the required selection, cancellation, and accounting primitives. Add a child-agent API only if a measured workflow proves lanes insufficient. |
 
-The code milestones remain disabled unless a host explicitly constructs and registers their Jev policies. Jev failure continues to return ordinary Pi behavior.
+Normal coding-agent startup now installs run routing when `jev.mode` is `route` and a key is present. Candidate selection, context selection, and the durable generation router still require host wiring. Jev failure continues to return the existing behavior at that decision point.
 
 ### Milestone 0: Baseline and fixtures
 
@@ -476,7 +478,6 @@ The runnable harness uses the existing Pi settings file:
 Supported modes:
 
 - `off`: no SDK initialization and no behavior change;
-- `shadow`: start decisions asynchronously, never delay or mutate the main path, and record results when available;
 - `route`: apply only validated generation routing;
 
 Each route can set `provider` and `model` together, `thinkingLevel`, and a tool allowlist. Missing or invalid models and tools preserve the current Pi configuration. The API key comes only from `TYPESAFE_API_KEY`; a missing key behaves as `off`.

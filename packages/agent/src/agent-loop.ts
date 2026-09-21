@@ -25,6 +25,7 @@ import type {
 	AgentToolCall,
 	AgentToolResult,
 	PrepareNextTurnContext,
+	ShouldStopAfterTurnContext,
 	StreamFn,
 } from "./types.ts";
 
@@ -169,7 +170,7 @@ async function runLoop(
 ): Promise<void> {
 	let currentContext = initialContext;
 	let config = initialConfig;
-	let lastCompletedTurn: PrepareNextTurnContext | undefined;
+	let lastCompletedTurn: ShouldStopAfterTurnContext | undefined;
 	// Check for steering messages at start (user may have typed while waiting)
 	let pendingMessages: AgentMessage[] = (await config.getSteeringMessages?.()) || [];
 
@@ -181,7 +182,8 @@ async function runLoop(
 		while (hasMoreToolCalls || pendingMessages.length > 0) {
 			let preparedMessages: AgentMessage[] = [];
 			if (lastCompletedTurn) {
-				const nextTurnSnapshot = await config.prepareNextTurn?.(lastCompletedTurn);
+				const preparation: PrepareNextTurnContext = { ...lastCompletedTurn, pendingMessages: [...pendingMessages] };
+				const nextTurnSnapshot = await config.prepareNextTurn?.(preparation);
 				if (nextTurnSnapshot) {
 					currentContext = nextTurnSnapshot.context ?? currentContext;
 					preparedMessages = nextTurnSnapshot.messages ?? [];
@@ -196,9 +198,8 @@ async function runLoop(
 									: nextTurnSnapshot.thinkingLevel,
 					};
 				}
-				// Preparation can be long-running (for example, compaction). Pick up steering
-				// queued while it ran. Only poll again if the earlier poll returned nothing;
-				// otherwise one-at-a-time mode would deliver two messages in this turn.
+				// Preserve late steering without draining twice in one-at-a-time mode.
+				// This suffix is not present in the preparation snapshot.
 				if (pendingMessages.length === 0) {
 					pendingMessages = (await config.getSteeringMessages?.()) || [];
 				}

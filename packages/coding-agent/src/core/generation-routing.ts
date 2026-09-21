@@ -37,7 +37,6 @@ export const defaultGenerationRouteProvider: GenerationRouteProvider = {
 export function createGenerationRoutingExtension(options: {
 	provider: GenerationRouteProvider;
 	routes: Readonly<Record<string, GenerationRouteProfile>>;
-	shadow?: boolean;
 	onRecord?(record: GenerationRouteRecord): void;
 }): InlineExtension {
 	return {
@@ -57,20 +56,6 @@ export function createGenerationRoutingExtension(options: {
 			pi.on("before_agent_start", async (event, context) => {
 				turn += 1;
 				const currentTurn = turn;
-				if (options.shadow) {
-					void options.provider
-						.decide(event.prompt, context.signal)
-						.then((result) => {
-							record(
-								"decision" in result
-									? { kind: "route", turn: currentTurn, decision: result.decision }
-									: { kind: "route", turn: currentTurn, fallback: result.fallback },
-							);
-						})
-						.catch(() => record({ kind: "route", turn: currentTurn, fallback: "provider_error" }));
-					return;
-				}
-
 				let result: GenerationRouteProviderResult;
 				try {
 					result = await options.provider.decide(event.prompt, context.signal);

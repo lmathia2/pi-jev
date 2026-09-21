@@ -25,6 +25,8 @@ import type {
 	CompactOptions,
 	ContextEvent,
 	ContextEventResult,
+	ContextManagementEvent,
+	ContextManagementResult,
 	ContextUsage,
 	EntryRenderer,
 	Extension,
@@ -161,6 +163,7 @@ type RunnerEmitEvent = Exclude<
 	| ToolResultEvent
 	| UserBashEvent
 	| ContextEvent
+	| ContextManagementEvent
 	| BeforeProviderRequestEvent
 	| BeforeProviderHeadersEvent
 	| BeforeAgentStartEvent
@@ -1082,6 +1085,37 @@ export class ExtensionRunner {
 		}
 
 		return currentMessages;
+	}
+
+	/** First explicit result owns this decision; errors fall back to host summary/capacity handling. */
+	async emitContextManagement(event: ContextManagementEvent): Promise<ContextManagementResult | undefined> {
+		const ctx = this.createContext();
+		for (const { ext, handlers } of snapshotEventHandlers(this.extensions, "context_management")) {
+			for (const handler of handlers) {
+				try {
+					event.signal?.throwIfAborted();
+					const result = await handler(
+						{
+							...event,
+							messages: structuredClone(event.messages),
+							tools: structuredClone(event.tools),
+							model: structuredClone(event.model),
+						},
+						ctx,
+					);
+					event.signal?.throwIfAborted();
+					if (result !== undefined) return result as ContextManagementResult;
+				} catch (error) {
+					event.signal?.throwIfAborted();
+					this.emitError({
+						extensionPath: ext.path,
+						event: event.type,
+						error: error instanceof Error ? error.message : String(error),
+					});
+				}
+			}
+		}
+		return undefined;
 	}
 
 	async emitBeforeProviderRequest(payload: unknown): Promise<unknown> {

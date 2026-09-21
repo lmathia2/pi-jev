@@ -28,6 +28,8 @@ export const workspaceSourcePaths = {
 export default defineConfig({
 	resolve: {
 		alias: [
+			{ find: /^@earendil-works\/pi-decisions$/, replacement: fileURLToPath(new URL("./packages/decisions/src/index.ts", import.meta.url)) },
+			{ find: /^@earendil-works\/pi-decisions\/(.+)$/, replacement: fileURLToPath(new URL("./packages/decisions/src", import.meta.url)) + "/$1.ts" },
 			{ find: /^@earendil-works\/chord$/, replacement: workspaceSourcePaths.chordIndex },
 			{ find: /^@earendil-works\/chord\/context$/, replacement: workspaceSourcePaths.chordContext },
 			{ find: /^@earendil-works\/chord\/delta$/, replacement: workspaceSourcePaths.chordDelta },

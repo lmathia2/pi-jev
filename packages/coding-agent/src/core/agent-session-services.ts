@@ -2,7 +2,7 @@ import { join } from "node:path";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import type { Model } from "@earendil-works/pi-ai";
 import { getAgentDir } from "../config.ts";
-import { createConfiguredGenerationRoutingExtension } from "../jev/runtime.ts";
+import { createConfiguredJevExtensions } from "../jev/runtime.ts";
 import { resolvePath } from "../utils/paths.ts";
 import type { SessionStartEvent, ToolDefinition } from "./extensions/index.ts";
 import { ModelRuntime } from "./model-runtime.ts";
@@ -146,14 +146,12 @@ export async function createAgentSessionServices(
 			signal: options.modelRuntimeSignal,
 		}));
 	const settingsManager = options.settingsManager ?? SettingsManager.create(cwd, agentDir);
-	const routingExtension = createConfiguredGenerationRoutingExtension(settingsManager.getJevSettings());
-	const extensionFactories = [
-		...(options.resourceLoaderOptions?.extensionFactories ?? []),
-		...(routingExtension ? [routingExtension] : []),
-	];
 	const resourceLoader = new DefaultResourceLoader({
 		...(options.resourceLoaderOptions ?? {}),
-		extensionFactories,
+		finalExtensionFactories: () => [
+			...(options.resourceLoaderOptions?.finalExtensionFactories?.() ?? []),
+			...createConfiguredJevExtensions(settingsManager.getJevSettings(), cwd),
+		],
 		cwd,
 		agentDir,
 		settingsManager,

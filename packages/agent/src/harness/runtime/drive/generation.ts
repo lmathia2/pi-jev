@@ -58,13 +58,14 @@ function configurationError(
 async function resolveSystemPrompt<TContext extends object | undefined>(
 	lane: Lane<TContext>,
 	context: Context,
+	configuration: LaneConfiguration,
 ): Promise<string> {
 	const config = lane.readConfig();
 	if (config.systemPrompt === undefined) return "";
 	if (typeof config.systemPrompt === "string") return config.systemPrompt;
 	const source = config.toolContext;
 	const toolContext = typeof source === "function" ? await source(context) : source;
-	return config.systemPrompt(toolContext as TContext, context);
+	return config.systemPrompt(toolContext as TContext, context, structuredClone(configuration));
 }
 
 async function prepareGeneration<TContext extends object | undefined>(
@@ -119,7 +120,7 @@ async function prepareGeneration<TContext extends object | undefined>(
 		};
 	});
 
-	const systemPrompt = await resolveSystemPrompt(lane, drive.context);
+	const systemPrompt = await resolveSystemPrompt(lane, drive.context, configuration);
 	const beforeRequest = await lane.hooks.runWithGate(
 		"before_request",
 		{

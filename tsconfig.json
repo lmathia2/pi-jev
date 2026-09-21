@@ -6,6 +6,8 @@
 		"moduleResolution": "NodeNext",
 		"paths": {
 			"*": ["./*"],
+			"@earendil-works/pi-decisions": ["./packages/decisions/src/index.ts"],
+			"@earendil-works/pi-decisions/*": ["./packages/decisions/src/*.ts"],
 			"@earendil-works/chord": ["./packages/chord/src/index.ts"],
 			"@earendil-works/chord/bundler": ["./packages/chord/src/bundler.ts"],
 			"@earendil-works/chord/context": ["./packages/chord/src/context/index.ts"],

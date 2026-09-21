@@ -101,6 +101,8 @@ function getMessageFromEntryForCompaction(entry: SessionEntry): AgentMessage | u
 
 /** Result from compact() - SessionManager adds uuid/parentUuid when saving */
 export interface CompactionResult<T = unknown> {
+	/** Selection reduces the working request without writing a summary checkpoint. */
+	strategy?: "selection";
 	summary: string;
 	firstKeptEntryId: string;
 	tokensBefore: number;

@@ -8,6 +8,19 @@ import {
 } from "../core/generation-routing.ts";
 import type { JevSettings } from "../core/settings-manager.ts";
 import { createJevClient, decideJevRoute } from "./client.ts";
+import { createContextRecallExtension } from "./context-recall.ts";
+import { createDecisionRecallExtension } from "./decision-components.ts";
+import { createConfiguredDecisionExtension } from "./decision-runtime.ts";
+
+/** Called by the resource loader only after it has applied project trust and reloaded settings. */
+export function createConfiguredJevExtensions(settings: JevSettings, cwd: string): InlineExtension[] {
+	const routing = createConfiguredGenerationRoutingExtension(settings, { cwd });
+	return [
+		createDecisionRecallExtension(),
+		createContextRecallExtension({ recoveryOnly: true }),
+		...(routing ? [routing] : []),
+	];
+}
 
 export function createJevGenerationRouteProvider(options: {
 	apiKey: string;
@@ -53,12 +66,27 @@ export function createConfiguredGenerationRoutingExtension(
 		apiKey?: string;
 		baseURL?: string;
 		fetch?: Fetch;
+		cwd?: string;
 		onRecord?(record: GenerationRouteRecord): void;
 	} = {},
 ): InlineExtension | undefined {
 	const apiKey = options.apiKey === undefined ? process.env.TYPESAFE_API_KEY?.trim() : options.apiKey.trim();
 	const mode = settings.mode ?? "off";
-	if ((mode !== "shadow" && mode !== "route") || !apiKey) return undefined;
+	if (mode === "decisions")
+		return createConfiguredDecisionExtension(settings.decisions ?? {}, {
+			cwd: options.cwd,
+			...(apiKey
+				? {
+						client: createJevClient({
+							apiKey,
+							baseURL: options.baseURL,
+							fetch: options.fetch,
+							timeoutMs: settings.timeoutMs ?? 5000,
+						}),
+					}
+				: {}),
+		});
+	if (mode !== "route" || !apiKey) return undefined;
 	const provider = createJevGenerationRouteProvider({
 		apiKey,
 		baseURL: options.baseURL,
@@ -78,7 +106,6 @@ export function createConfiguredGenerationRoutingExtension(
 	return createGenerationRoutingExtension({
 		provider,
 		routes,
-		shadow: mode !== "route",
 		onRecord: options.onRecord,
 	});
 }

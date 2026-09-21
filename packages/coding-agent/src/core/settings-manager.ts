@@ -6,6 +6,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { dirname, join } from "path";
 import lockfile from "proper-lockfile";
 import { CONFIG_DIR_NAME, getAgentDir } from "../config.ts";
+import type { DecisionSettings } from "../jev/decision-runtime.ts";
 import { normalizePath, resolvePath } from "../utils/paths.ts";
 import { stripBom } from "../utils/text.ts";
 import { DEFAULT_HTTP_IDLE_TIMEOUT_MS, parseHttpIdleTimeoutMs } from "./http-dispatcher.ts";
@@ -90,7 +91,8 @@ export interface JevRouteSettings {
 }
 
 export interface JevSettings {
-	mode?: "off" | "shadow" | "route";
+	mode?: "off" | "route" | "decisions";
+	decisions?: DecisionSettings;
 	timeoutMs?: number;
 	minProbability?: number;
 	minFit?: number;

@@ -12,6 +12,7 @@
 				"@earendil-works/chord": "^0.85.1",
 				"@earendil-works/pi-agent-core": "^0.85.1",
 				"@earendil-works/pi-ai": "^0.85.1",
+				"@earendil-works/pi-decisions": "^0.85.1",
 				"@earendil-works/pi-tui": "^0.85.1",
 				"@silvia-odwyer/photon-node": "0.3.4",
 				"@typesafe-ai/sdk": "0.6.0",
@@ -480,6 +481,17 @@
 			},
 			"engines": {
 				"node": ">= 20"
+			}
+		},
+		"node_modules/@earendil-works/pi-decisions": {
+			"version": "0.85.1",
+			"resolved": "https://registry.npmjs.org/@earendil-works/pi-decisions/-/pi-decisions-0.85.1.tgz",
+			"license": "MIT",
+			"dependencies": {
+				"@typesafe-ai/sdk": "0.6.0"
+			},
+			"engines": {
+				"node": ">=22.19.0"
 			}
 		},
 		"node_modules/@earendil-works/pi-telemetry": {

@@ -19,6 +19,7 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 /** Workspace package name -> its source root, so cross-package imports are followed. */
 const WORKSPACE = {
+	"@earendil-works/pi-decisions": "packages/decisions/src",
 	"@earendil-works/chord": "packages/chord/src",
 	"@earendil-works/pi-ai": "packages/ai/src",
 	"@earendil-works/pi-agent-core": "packages/agent/src",
@@ -31,6 +32,9 @@ const WORKSPACE = {
  * narrow entry states the graph it is allowed to reach.
  */
 const BUDGETS = {
+	"packages/decisions": {
+		".": { maxFiles: 8, forbid: ["/jev.ts", "packages/coding-agent/", "packages/agent/", "packages/chord/"] },
+	},
 	"packages/ai": {
 		"./utils/*": { maxFiles: 3, forbid: ["providers/", "api/", "index.ts"] },
 	},

@@ -21,6 +21,10 @@ export default defineConfig({
 			{ find: /^@earendil-works\/pi-agent-core$/, replacement: agentSrcIndex },
 			{ find: /^@earendil-works\/pi-ai$/, replacement: aiSrcIndex },
 			{ find: /^@earendil-works\/pi-ai\/compat$/, replacement: aiSrcCompat },
+			{
+				find: /^@earendil-works\/pi-ai\/utils\/(.+)$/,
+				replacement: `${fileURLToPath(new URL("../ai/src/utils", import.meta.url))}/$1.ts`,
+			},
 		],
 	},
 	ssr: { resolve: { conditions: ["source"] } },

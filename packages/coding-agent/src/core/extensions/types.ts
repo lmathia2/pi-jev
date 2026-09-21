@@ -29,6 +29,7 @@ import type {
 	RefreshModelsContext,
 	SimpleStreamOptions,
 	TextContent,
+	Tool,
 	ToolResultMessage,
 	TranscriptContext,
 	Usage,
@@ -690,6 +691,26 @@ export interface ContextEvent {
 	messages: AgentMessage[];
 }
 
+/** Pre-construction selection and selection-first compaction. Original session messages are never replaced. */
+export interface ContextManagementEvent {
+	type: "context_management";
+	reason: "prepare" | "prepare-after-summary" | "manual" | "threshold" | "overflow";
+	messages: AgentMessage[];
+	/** Estimate from structured prompt inputs, before rendering; excludes messages and tool schemas. */
+	promptOverheadTokens: number;
+	/** Identity of raw prompt inputs, selected schemas and model, before rendering. */
+	promptIdentity: string;
+	tools: Tool[];
+	model: Model<string>;
+	reserveTokens: number;
+	signal: AbortSignal | undefined;
+	customInstructions?: string;
+}
+
+export type ContextManagementResult =
+	| { action: "selected"; messages: AgentMessage[]; maxInputTokens: number }
+	| { action: "compact"; maxInputTokens: number };
+
 /** Fired before a provider request is sent. Can replace the payload. */
 export interface BeforeProviderRequestEvent {
 	type: "before_provider_request";
@@ -723,6 +744,17 @@ export interface BeforeAgentStartEvent {
 	/** The current system prompt, rendered from systemPromptOptions and earlier handler changes. */
 	readonly systemPrompt: string;
 	/** Mutable prompt sections. Later handlers observe mutations made by earlier handlers. */
+	systemPromptOptions: NormalizedBuildSystemPromptOptions;
+}
+
+/** Fired before prompt sections and executable tool schemas are assembled for a generation. */
+export interface BeforeGenerationEvent {
+	type: "before_generation";
+	/** True for user-prompt preparation; false for loop continuations and custom-message turns. */
+	initial: boolean;
+	/** Cancellation for this preparation. Check again before applying asynchronous decisions. */
+	signal: AbortSignal | undefined;
+	/** Mutable structured options, including edits made by before_agent_start handlers. */
 	systemPromptOptions: NormalizedBuildSystemPromptOptions;
 }
 
@@ -1088,10 +1120,12 @@ export type ExtensionEvent =
 	| ResourcesDiscoverEvent
 	| SessionEvent
 	| ContextEvent
+	| ContextManagementEvent
 	| BeforeProviderRequestEvent
 	| BeforeProviderHeadersEvent
 	| AfterProviderResponseEvent
 	| BeforeAgentStartEvent
+	| BeforeGenerationEvent
 	| AgentStartEvent
 	| AgentEndEvent
 	| AgentSettledEvent
@@ -1288,6 +1322,10 @@ export interface ExtensionAPI {
 	on(event: "session_tree", handler: ExtensionHandler<SessionTreeEvent>): () => void;
 	on(event: "context", handler: ExtensionHandler<ContextEvent, ContextEventResult>): () => void;
 	on(
+		event: "context_management",
+		handler: ExtensionHandler<ContextManagementEvent, ContextManagementResult>,
+	): () => void;
+	on(
 		event: "before_provider_request",
 		handler: ExtensionHandler<BeforeProviderRequestEvent, BeforeProviderRequestEventResult>,
 	): () => void;
@@ -1298,6 +1336,7 @@ export interface ExtensionAPI {
 		handler: ExtensionHandler<BeforeAgentStartEvent, BeforeAgentStartEventResult>,
 	): () => void;
 	on(event: "agent_start", handler: ExtensionHandler<AgentStartEvent>): () => void;
+	on(event: "before_generation", handler: ExtensionHandler<BeforeGenerationEvent>): () => void;
 	on(event: "agent_end", handler: ExtensionHandler<AgentEndEvent>): () => void;
 	on(event: "agent_settled", handler: ExtensionHandler<AgentSettledEvent>): () => void;
 	on(event: "ui_prompt_start", handler: ExtensionHandler<UIPromptStartEvent>): () => void;
@@ -1433,7 +1472,7 @@ export interface ExtensionAPI {
 	 * Set the model for the current session without changing the configured default for new sessions.
 	 * Returns false if authentication is not configured for the model's provider.
 	 */
-	setModel(model: Model<any>): Promise<boolean>;
+	setModel(model: Model<any>, options?: ModelSelectionOptions): Promise<boolean>;
 
 	/** Get current thinking level. */
 	getThinkingLevel(): ThinkingLevel;
@@ -1677,7 +1716,15 @@ export type SetActiveToolsHandler = (toolNames: string[]) => void;
 
 export type RefreshToolsHandler = () => void;
 
-export type SetModelHandler = (model: Model<any>) => Promise<boolean>;
+export interface ModelSelectionOptions {
+	signal?: AbortSignal;
+	/** Synchronous freshness check after authentication, immediately before mutation. */
+	beforeApply?: () => boolean;
+	/** Commit this complete preset with the model before notifying listeners. */
+	configuration?: { effort: ThinkingLevel; tools: readonly string[] };
+}
+
+export type SetModelHandler = (model: Model<any>, options?: ModelSelectionOptions) => Promise<boolean>;
 
 export type GetThinkingLevelHandler = () => ThinkingLevel;
 

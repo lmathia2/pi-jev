@@ -3,6 +3,7 @@ import type { Fetch } from "@typesafe-ai/sdk";
 import { afterEach, describe, expect, it } from "vitest";
 import {
 	createGenerationRoutingExtension,
+	defaultGenerationRouteProvider,
 	type GenerationRouteProvider,
 	type GenerationRouteRecord,
 } from "../../src/core/generation-routing.ts";
@@ -14,12 +15,11 @@ describe("generation routing", () => {
 
 	afterEach(() => harness?.cleanup());
 
-	it("does not await or mutate execution in shadow mode", async () => {
-		const provider: GenerationRouteProvider = {
-			decide: () => new Promise(() => {}),
-		};
+	it("preserves execution with the default provider", async () => {
 		harness = await createHarness({
-			extensionFactories: [createGenerationRoutingExtension({ provider, routes: {}, shadow: true })],
+			extensionFactories: [
+				createGenerationRoutingExtension({ provider: defaultGenerationRouteProvider, routes: {} }),
+			],
 		});
 		harness.setResponses([fauxAssistantMessage("response")]);
 
@@ -27,6 +27,42 @@ describe("generation routing", () => {
 
 		expect(harness.faux.state.callCount).toBe(1);
 		expect(harness.session.thinkingLevel).toBe("off");
+	});
+
+	it("does not register routing when off, unconfigured, or missing a key", () => {
+		expect(createConfiguredGenerationRoutingExtension({}, { apiKey: "test" })).toBeUndefined();
+		expect(createConfiguredGenerationRoutingExtension({ mode: "off" }, { apiKey: "test" })).toBeUndefined();
+		expect(createConfiguredGenerationRoutingExtension({ mode: "route" }, { apiKey: "" })).toBeUndefined();
+	});
+
+	it("does not enable routing for removed shadow settings loaded from JSON", () => {
+		expect(
+			createConfiguredGenerationRoutingExtension(JSON.parse('{"mode":"shadow"}'), { apiKey: "test" }),
+		).toBeUndefined();
+	});
+
+	it("falls back on provider errors and isolates telemetry callback failures", async () => {
+		const records: GenerationRouteRecord[] = [];
+		harness = await createHarness({
+			extensionFactories: [
+				createGenerationRoutingExtension({
+					provider: {
+						async decide() {
+							throw new Error("provider unavailable");
+						},
+					},
+					routes: {},
+					onRecord(record) {
+						records.push(record);
+						throw new Error("telemetry unavailable");
+					},
+				}),
+			],
+		});
+		harness.setResponses([fauxAssistantMessage("response")]);
+		await harness.session.prompt("private task text");
+		expect(harness.faux.state.callCount).toBe(1);
+		expect(records).toEqual([{ kind: "route", turn: 1, fallback: "provider_error" }]);
 	});
 
 	it("applies a validated route profile", async () => {

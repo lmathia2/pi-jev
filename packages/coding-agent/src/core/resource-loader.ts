@@ -166,6 +166,8 @@ export interface DefaultResourceLoaderOptions {
 	additionalPromptTemplatePaths?: string[];
 	additionalThemePaths?: string[];
 	extensionFactories?: InlineExtension[];
+	/** Recreate settings-dependent extensions after trust resolution and settings reload, never during bootstrap. */
+	finalExtensionFactories?: () => InlineExtension[];
 	noExtensions?: boolean;
 	noSkills?: boolean;
 	noPromptTemplates?: boolean;
@@ -204,6 +206,7 @@ export class DefaultResourceLoader implements ResourceLoader {
 	private additionalPromptTemplatePaths: string[];
 	private additionalThemePaths: string[];
 	private extensionFactories: InlineExtension[];
+	private finalExtensionFactories?: () => InlineExtension[];
 	private noExtensions: boolean;
 	private noSkills: boolean;
 	private noPromptTemplates: boolean;
@@ -266,6 +269,7 @@ export class DefaultResourceLoader implements ResourceLoader {
 		this.additionalPromptTemplatePaths = options.additionalPromptTemplatePaths ?? [];
 		this.additionalThemePaths = options.additionalThemePaths ?? [];
 		this.extensionFactories = options.extensionFactories ?? [];
+		this.finalExtensionFactories = options.finalExtensionFactories;
 		this.noExtensions = options.noExtensions ?? false;
 		this.noSkills = options.noSkills ?? false;
 		this.noPromptTemplates = options.noPromptTemplates ?? false;
@@ -454,6 +458,14 @@ export class DefaultResourceLoader implements ResourceLoader {
 			: this.mergePaths(cliEnabledExtensions, enabledExtensions);
 
 		const extensionsResult = await this.loadFinalExtensionSet(extensionPaths, preTrustExtensions);
+		const finalExtensions = await this.loadExtensionFactories(
+			extensionsResult.runtime,
+			this.finalExtensionFactories?.() ?? [],
+			"final",
+		);
+		extensionsResult.extensions.push(...finalExtensions.extensions);
+		extensionsResult.errors.push(...finalExtensions.errors);
+		this.addExtensionConflictDiagnostics(extensionsResult);
 		for (const p of this.additionalExtensionPaths) {
 			if (isLocalPath(p)) {
 				const resolved = this.resolveResourcePath(p);
@@ -580,7 +592,6 @@ export class DefaultResourceLoader implements ResourceLoader {
 			const inlineExtensions = await this.loadExtensionFactories(extensionsResult.runtime);
 			extensionsResult.extensions.push(...inlineExtensions.extensions);
 			extensionsResult.errors.push(...inlineExtensions.errors);
-			this.addExtensionConflictDiagnostics(extensionsResult);
 			return extensionsResult;
 		}
 
@@ -620,7 +631,6 @@ export class DefaultResourceLoader implements ResourceLoader {
 			errors: [...preTrustExtensions.errors, ...remainingExtensions.errors],
 			runtime: preTrustExtensions.runtime,
 		};
-		this.addExtensionConflictDiagnostics(extensionsResult);
 		return extensionsResult;
 	}
 
@@ -943,17 +953,21 @@ export class DefaultResourceLoader implements ResourceLoader {
 		}
 	}
 
-	private async loadExtensionFactories(runtime: ExtensionRuntime): Promise<{
+	private async loadExtensionFactories(
+		runtime: ExtensionRuntime,
+		factories = this.extensionFactories,
+		prefix = "inline",
+	): Promise<{
 		extensions: Extension[];
 		errors: Array<{ path: string; error: string }>;
 	}> {
 		const extensions: Extension[] = [];
 		const errors: Array<{ path: string; error: string }> = [];
 
-		for (const [index, input] of this.extensionFactories.entries()) {
+		for (const [index, input] of factories.entries()) {
 			const isNamed = typeof input !== "function";
 			const factory = isNamed ? input.factory : input;
-			const extensionPath = `<inline:${isNamed ? input.name : index + 1}>`;
+			const extensionPath = `<${prefix}:${isNamed ? input.name : index + 1}>`;
 			try {
 				const extension = await loadExtensionFromFactory(factory, this.cwd, this.eventBus, runtime, extensionPath);
 				extension.hidden = isNamed && input.hidden;

@@ -1,4 +1,4 @@
-import type { Fetch, Usage } from "@typesafe-ai/sdk";
+import type { Usage } from "@typesafe-ai/sdk";
 
 export const JEV_ROUTE_IDS = ["fast", "standard", "deep", "research"] as const;
 export type JevRouteId = (typeof JEV_ROUTE_IDS)[number];
@@ -38,26 +38,3 @@ export interface ContextCandidate {
 export type JevFindResult =
 	| { ok: true; relevance: Readonly<Record<string, number>>; fit: number }
 	| { ok: false; failure: JevFailure | "no_candidates" };
-
-export interface JevShadowOptions {
-	apiKey?: string;
-	baseURL?: string;
-	fetch?: Fetch;
-	timeoutMs?: number;
-	onRecord(record: JevShadowRecord): void;
-}
-
-export type JevShadowRecord =
-	| {
-			kind: "route";
-			turn: number;
-			candidateIds: readonly JevRouteId[];
-			result: JevRouteResult;
-	  }
-	| {
-			kind: "outcome";
-			turn: number;
-			modelCalls: number;
-			toolCalls: number;
-			compactions: number;
-	  };

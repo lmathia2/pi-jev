@@ -388,6 +388,35 @@ describe("runtime generation checkpoint", () => {
 });
 
 describe("runtime assistant generation", () => {
+	it("passes the admitted configuration into prompt assembly before the provider", async () => {
+		const fixture = await createFixture();
+		const ready = await advanceToReady(fixture);
+		const order: string[] = [];
+		fixture.hooks.on("before_generation", () => {
+			order.push("route");
+			return { configuration: { thinkingLevel: "high" } };
+		});
+		vi.spyOn(fixture.lane, "readConfig").mockReturnValue({
+			...fixture.config,
+			systemPrompt: (_toolContext, _context, configuration) => {
+				order.push("prompt");
+				expect(configuration.thinkingLevel).toBe("high");
+				expect(fixture.lane.state.configuration.thinkingLevel).toBe("off");
+				configuration.activeToolNames.push("must-not-leak");
+				return `Effort: ${configuration.thinkingLevel}`;
+			},
+		});
+		fixture.faux.setResponses([
+			() => {
+				order.push("provider");
+				return fauxAssistantMessage("answer", { timestamp: 5 });
+			},
+		]);
+		await runGeneration(fixture.lane, fixture.drive, ready);
+		expect(order).toEqual(["route", "prompt", "provider"]);
+		expect(fixture.lane.state.configuration.activeToolNames).toEqual([]);
+	});
+
 	it("captures a before_generation patch before provider admission", async () => {
 		const fixture = await createFixture();
 		const ready = await advanceToReady(fixture);
