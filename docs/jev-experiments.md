@@ -1,5 +1,7 @@
 # Jev experiment queue
 
+For the runnable Pier adapter, matched LLM/Jev arms, Muse model manifest and DeepSWE protocol, see [DeepSWE decision experiment](deepswe-decision-experiment.md). Runtime packaging and live smoke tests remain explicit prerequisites; no benchmark result is claimed.
+
 Correctness fixtures do not establish usefulness. Keep each component opt-in until its experiment passes. Use fixed task/session groups and operator-owned gates; preserve an untouched final holdout. Record policy digest, implementation/model version, candidate roster, data projection, budgets, repetitions, and measured cache usage with each result.
 
 ## Available offline workflow

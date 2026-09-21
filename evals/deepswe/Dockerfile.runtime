@@ -1,0 +1,7 @@
+# Build only from a clean git archive, never from a working directory containing secrets.
+FROM node:22.19.0-bookworm-slim
+WORKDIR /runtime
+COPY . .
+RUN npm ci --ignore-scripts
+RUN cp /usr/local/bin/node /runtime/node
+RUN tar -czf /pi-jev-runtime.tgz -C /runtime .

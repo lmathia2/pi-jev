@@ -416,8 +416,16 @@ export function createDecisionContextExtension(options: {
 					event.signal?.aborted ||
 					context.sessionManager.getLeafId() !== revision ||
 					context.hasPendingMessages() !== pendingBefore
-				)
+				) {
+					for (const invocation of invocations)
+						options.registry.trace({
+							event: "outcome",
+							traceId: invocation.traceId,
+							effectiveAction: "compact",
+							fallback: "cancelled_or_stale",
+						});
 					return { action: "compact", maxInputTokens };
+				}
 				const selections: Selection[] = units.map((unit) => {
 					const call = scores[`${unit.id}:call`];
 					const result = scores[`${unit.id}:result`];
@@ -475,13 +483,47 @@ export function createDecisionContextExtension(options: {
 							future * cachedTokens * warm;
 						const change = (after - prefixTokens) * cold + prefixTokens * rates.cacheRead + future * after * warm;
 						if ((stay - change) / 1e6 <= settings.cacheMinSavingsUsd) {
+							for (const invocation of invocations)
+								options.registry.trace({
+									event: "outcome",
+									traceId: invocation.traceId,
+									effectiveAction: "reuse",
+									fallback: "cache_cost",
+									previous,
+									selections,
+									scores,
+									stay,
+									change,
+									prefixTokens,
+									cachedTokens,
+									after,
+									maxInputTokens,
+								});
 							return { action: "selected", messages: cached, maxInputTokens };
 						}
 					}
 				}
 				const worthwhile = before === 0 || after <= before * (1 - settings.minReduction);
-				if (after > maxInputTokens || ((explicit || after > maxInputTokens * settings.targetRatio) && !worthwhile))
+				if (
+					after > maxInputTokens ||
+					((explicit || after > maxInputTokens * settings.targetRatio) && !worthwhile)
+				) {
+					for (const invocation of invocations)
+						options.registry.trace({
+							event: "outcome",
+							traceId: invocation.traceId,
+							effectiveAction: "compact",
+							fallback: "capacity_or_reduction",
+							selections,
+							scores,
+							before,
+							after,
+							maxInputTokens,
+							explicit,
+							settings,
+						});
 					return { action: "compact", maxInputTokens };
+				}
 				const plan: ContextPlan = {
 					version: 1,
 					key,
@@ -493,6 +535,14 @@ export function createDecisionContextExtension(options: {
 					scores,
 				};
 				pi.appendEntry(PLAN, plan);
+				for (const invocation of invocations)
+					options.registry.trace({
+						event: "outcome",
+						traceId: invocation.traceId,
+						effectiveAction: "selected",
+						plan,
+						settings,
+					});
 				return { action: "selected", messages, maxInputTokens };
 			});
 		},

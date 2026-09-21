@@ -1,5 +1,5 @@
 import { APIError, APITimeoutError, choice, noul, type TypeSafeClient } from "@typesafe-ai/sdk";
-import type { DecisionImplementation, DecisionResult } from "./contracts.ts";
+import type { DecisionImplementation, DecisionResult, Json } from "./contracts.ts";
 
 const subsetDefinitions = ["context.select/v1", "output.select/v1", "skills.select/v1", "retrieval.rank/v1"];
 
@@ -64,6 +64,7 @@ export function createJevImplementation(client: Pick<TypeSafeClient, "systemOne"
 				currentCandidateId: request.currentCandidateId ?? null,
 			};
 			let requests = 0;
+			let providerEvidence: Json = null;
 			try {
 				if (subsetDefinitions.includes(request.definition) || request.definition === "context.retention/v1") {
 					const criteria = policy.criteria;
@@ -85,13 +86,21 @@ export function createJevImplementation(client: Pick<TypeSafeClient, "systemOne"
 					);
 					requests++;
 					const response = await client.systemOne({ state, questions }, { signal, retry: { maxRetries: 0 } });
+					providerEvidence = JSON.parse(JSON.stringify(response)) as Json;
 					const usage = { requests, tokens: response.usage.input_tokens + response.usage.output_tokens };
-					if (signal.aborted) return { status: "failed", reason: "aborted", usage };
+					if (signal.aborted) return { status: "failed", reason: "aborted", usage, evidence: providerEvidence };
 					const probabilities: Record<string, number> = {};
 					const selected: string[] = [];
 					for (const candidate of candidates) {
 						const probability = response.answers[candidate.label]?.noul;
-						if (!validProbability(probability)) return { status: "failed", reason: "invalid_response", usage };
+						if (!validProbability(probability))
+							return {
+								status: "failed",
+								reason: "invalid_response",
+								usage,
+								evidence: providerEvidence,
+								scores: probabilities,
+							};
 						probabilities[candidate.id] = probability;
 						// Uncertainty retains context. Only a confident negative may discard it.
 						if (probability > 1 - minimum) selected.push(candidate.id);
@@ -102,7 +111,8 @@ export function createJevImplementation(client: Pick<TypeSafeClient, "systemOne"
 							request.definition === "context.retention/v1"
 								? { kind: "score", values: probabilities }
 								: { kind: "subset", candidateIds: selected },
-						evidence: { model: response.model, probabilities, scale: "probability" },
+						evidence: { model: response.model, probabilities, scale: "probability", response: providerEvidence },
+						scores: probabilities,
 						usage,
 					};
 				}
@@ -111,6 +121,7 @@ export function createJevImplementation(client: Pick<TypeSafeClient, "systemOne"
 						status: "proposed",
 						answer: { kind: "select", candidateId: candidates[0].id },
 						usage: { requests: 0 },
+						evidence: { scoreSource: "single_candidate" },
 					};
 				const policyCriteria =
 					policy.criteria && typeof policy.criteria === "object" && !Array.isArray(policy.criteria)
@@ -128,7 +139,8 @@ export function createJevImplementation(client: Pick<TypeSafeClient, "systemOne"
 					{ signal, retry: { maxRetries: 0 } },
 				);
 				const usage = { requests, tokens: response.usage.input_tokens + response.usage.output_tokens };
-				if (signal.aborted) return { status: "failed", reason: "aborted", usage };
+				providerEvidence = JSON.parse(JSON.stringify(response)) as Json;
+				if (signal.aborted) return { status: "failed", reason: "aborted", usage, evidence: providerEvidence };
 				const answer = response.answers.selection;
 				const selected = candidates.find(({ label }) => label === answer.choice);
 				if (
@@ -136,23 +148,28 @@ export function createJevImplementation(client: Pick<TypeSafeClient, "systemOne"
 					!validProbability(answer.confidence) ||
 					candidates.some(({ label }) => !validProbability(answer.probabilities[label]))
 				)
-					return { status: "failed", reason: "invalid_response", usage };
+					return { status: "failed", reason: "invalid_response", usage, evidence: providerEvidence };
+				const scores = Object.fromEntries(candidates.map(({ id, label }) => [id, answer.probabilities[label]]));
+				const evidence = {
+					model: response.model,
+					response: providerEvidence,
+					probability: answer.probabilities[selected.label],
+					scale: "probability",
+				};
 				if (answer.probabilities[selected.label] < minimum)
-					return { status: "abstained", reason: "low_probability", usage };
+					return { status: "abstained", reason: "low_probability", usage, scores, evidence };
 				return {
 					status: "proposed",
 					answer: { kind: "select", candidateId: selected.id },
-					evidence: {
-						model: response.model,
-						probability: answer.probabilities[selected.label],
-						scale: "probability",
-					},
+					evidence,
+					scores,
 					usage,
 				};
 			} catch (error) {
 				return {
 					status: "failed",
 					usage: { requests },
+					evidence: providerEvidence,
 					reason: signal.aborted
 						? "aborted"
 						: error instanceof APITimeoutError

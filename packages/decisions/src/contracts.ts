@@ -27,10 +27,10 @@ export interface DecisionUsage {
 }
 
 export type DecisionResult = (
-	| { status: "proposed"; answer: DecisionAnswer; evidence?: Json }
+	| { status: "proposed"; answer: DecisionAnswer }
 	| { status: "abstained"; reason: string }
 	| { status: "failed"; reason: string }
-) & { usage?: DecisionUsage };
+) & { usage?: DecisionUsage; scores?: Readonly<Record<string, number>>; evidence?: Json };
 
 export interface DecisionImplementation {
 	id: string;
@@ -51,6 +51,7 @@ export interface DecisionDefinition {
 }
 
 export interface DecisionInvocation {
+	traceId?: string;
 	result: DecisionResult;
 	implementationId: string;
 	implementationVersion: string;

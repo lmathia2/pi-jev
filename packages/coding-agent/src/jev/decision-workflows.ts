@@ -29,6 +29,7 @@ export interface DecisionWorkflowSettings {
 export function createDecisionWorkflowsExtension(
 	settings: DecisionWorkflowSettings,
 	evaluate: DecisionComponentsOptions["evaluate"],
+	onRecord?: (record: Record<string, unknown>) => void,
 ): InlineExtension {
 	for (const component of [settings.recovery, settings.evidence, settings.specialists])
 		if (
@@ -147,6 +148,19 @@ export function createDecisionWorkflowsExtension(
 						outcome: result.status,
 						...(result.invocation ? { invocation: result.invocation } : {}),
 					});
+				try {
+					onRecord?.({
+						event: "outcome",
+						traceId: result.invocation?.traceId,
+						definition: request.definition,
+						boundaryId: request.boundaryId,
+						selected,
+						effectiveAction: selected,
+						fallback: stale ? "cancelled_or_stale" : result.status === "proposed" ? null : result.reason,
+					});
+				} catch {
+					/* Diagnostics do not change execution. */
+				}
 				return selected;
 			};
 			if (settings.recovery)

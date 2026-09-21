@@ -364,7 +364,16 @@ export function createDecisionRoutingExtension(options: {
 							settings.phaseBinding.policy,
 							{ signal, timeoutMs: settings.timeoutMs, budget: phaseBudget },
 						);
-						if (signal?.aborted || phaseRevision() !== beforePhase) return;
+						if (signal?.aborted || phaseRevision() !== beforePhase) {
+							options.registry.trace({
+								event: "outcome",
+								traceId: phaseInvocation.traceId,
+								effectiveAction: "unchanged",
+								fallback: "cancelled_or_stale",
+								phase,
+							});
+							return;
+						}
 						const answer = phaseInvocation.result;
 						const next =
 							answer.status === "proposed" && answer.answer.kind === "select"
@@ -377,6 +386,14 @@ export function createDecisionRoutingExtension(options: {
 							policyDigest: phaseInvocation.policyDigest,
 							inputDigest: phaseInvocation.inputDigest,
 							status: answer.status,
+						});
+						options.registry.trace({
+							event: "outcome",
+							traceId: phaseInvocation.traceId,
+							effectiveAction: next === phase ? "unchanged" : "transition",
+							phase,
+							selected: next,
+							allowed,
 						});
 						if (next !== phase && allowed.includes(next)) {
 							phase = next;
@@ -551,7 +568,16 @@ export function createDecisionRoutingExtension(options: {
 					settings.binding.policy,
 					{ signal, timeoutMs: settings.timeoutMs, budget },
 				);
-				if (signal?.aborted || revision() !== before) return;
+				if (signal?.aborted || revision() !== before) {
+					options.registry.trace({
+						event: "outcome",
+						traceId: invocation.traceId,
+						effectiveAction: "unchanged",
+						fallback: "cancelled_or_stale",
+						effective: effective(),
+					});
+					return;
+				}
 				const result = invocation.result;
 				const selected =
 					result.status === "proposed" && result.answer.kind === "select" ? result.answer.candidateId : undefined;
@@ -635,6 +661,19 @@ export function createDecisionRoutingExtension(options: {
 				};
 				// Persistence is required for phase pinning; callback telemetry is best effort.
 				pi.appendEntry("decision-route", trace);
+				options.registry.trace({
+					event: "outcome",
+					traceId: invocation.traceId,
+					...trace,
+					admissionInputs: {
+						promptTokens,
+						cachedTokens,
+						estimate: settings.estimate,
+						escalationMaxUsd: settings.escalationMaxUsd ?? null,
+						currentRates: currentModel.cost,
+						targetRates: route ? context.modelRegistry.find(route.provider, route.model)?.cost : null,
+					},
+				});
 				try {
 					options.onRecord?.(trace);
 				} catch {

@@ -57,6 +57,7 @@ describe("Jev implementation", () => {
 		);
 		expect(await implementation.evaluate(request, policy, new AbortController().signal)).toMatchObject({
 			status: "abstained",
+			scores: { "model/one:high": 0.4, "model/two:low": 0.6 },
 			usage: { requests: 1, tokens: 12 },
 		});
 	});
@@ -80,6 +81,7 @@ describe("Jev implementation", () => {
 		expect(await implementation.evaluate(request, policy, new AbortController().signal)).toMatchObject({
 			status: "proposed",
 			answer: { kind: "select", candidateId: "model/two:low" },
+			scores: { "model/one:high": 0.1, "model/two:low": 0.9 },
 			usage: { requests: 1, tokens: 12 },
 		});
 		expect(body).toMatchObject({

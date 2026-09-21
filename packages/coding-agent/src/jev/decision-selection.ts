@@ -6,7 +6,10 @@ import { selectDecisionContext } from "./decision-components.ts";
 import type { ContextCandidate } from "./types.ts";
 
 /** Phase-owned visibility selection runs before model routing prices the prospective prompt. */
-export function createDecisionSkillSelector(options: { evaluate: DecisionComponentsOptions["evaluate"] }) {
+export function createDecisionSkillSelector(options: {
+	evaluate: DecisionComponentsOptions["evaluate"];
+	onRecord?(record: Record<string, unknown>): void;
+}) {
 	let roster: Skill[] = [];
 	return async (
 		event: BeforeGenerationEvent,
@@ -61,7 +64,15 @@ export function createDecisionSkillSelector(options: { evaluate: DecisionCompone
 			},
 			event.signal,
 		);
-		if (event.signal?.aborted || (context.sessionManager.getLeafId() ?? "initial") !== revision) return false;
+		if (event.signal?.aborted || (context.sessionManager.getLeafId() ?? "initial") !== revision) {
+			options.onRecord?.({
+				event: "outcome",
+				traceId: invocation?.traceId,
+				effectiveAction: "unchanged",
+				fallback: "cancelled_or_stale",
+			});
+			return false;
+		}
 		try {
 			pi.appendEntry("decision-skills", {
 				phase: phaseKey,
@@ -69,9 +80,22 @@ export function createDecisionSkillSelector(options: { evaluate: DecisionCompone
 				...(invocation ? { invocation } : {}),
 			});
 		} catch {
+			options.onRecord?.({
+				event: "outcome",
+				traceId: invocation?.traceId,
+				effectiveAction: "unchanged",
+				fallback: "persist_failed",
+			});
 			return false;
 		}
 		event.systemPromptOptions.skills = [...selected];
+		options.onRecord?.({
+			event: "outcome",
+			traceId: invocation?.traceId,
+			effectiveAction: "selected",
+			ids: selected.map((skill) => skill.name),
+			explicit,
+		});
 		return true;
 	};
 }

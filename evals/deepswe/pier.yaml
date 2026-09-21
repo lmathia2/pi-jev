@@ -1,0 +1,36 @@
+# Copy to an operator-owned config and fill ALL SET_* fields before a run.
+job_name: pi-jev-deepswe-pilot
+jobs_dir: jobs
+n_attempts: 1
+n_concurrent_trials: 1
+retry:
+  max_retries: 0
+environment:
+  type: docker
+verifier:
+  disable: false
+datasets:
+  - path: SET_DEEPSWE_CHECKOUT/tasks
+    task_names: [SET_EXACT_PILOT_TASK_ID]
+agents:
+  - import_path: pi_jev:PiJev
+    model_name: meta/muse-spark-1.3-contributor
+    override_timeout_sec: 3600
+    kwargs: &shared
+      runtime_archive: SET_ABSOLUTE_RUNTIME_TGZ
+      runtime_sha256: SET_64_HEX_SHA256
+      experiment: SET_ABSOLUTE_EXPERIMENT_JSON
+      arm: llm
+      # Same exact allowlist for both arms; no wildcard internet access.
+      domains: [api.meta.ai, api.typesafe.ai]
+    env: &credentials
+      # Replace with only the provider keys needed by the selected models.
+      MODEL_API_KEY: ${MODEL_API_KEY}
+      TYPESAFE_API_KEY: ${TYPESAFE_API_KEY}
+  - import_path: pi_jev:PiJev
+    model_name: meta/muse-spark-1.3-contributor
+    override_timeout_sec: 3600
+    kwargs:
+      <<: *shared
+      arm: jev
+    env: *credentials

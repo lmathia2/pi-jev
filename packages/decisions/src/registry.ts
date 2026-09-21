@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type {
 	DecisionDefinition,
 	DecisionImplementation,
@@ -66,14 +66,29 @@ export interface InvocationOptions {
 }
 
 export class DecisionRegistry {
+	private onTrace?: (event: Record<string, unknown>) => void;
 	private implementations = new Map<string, DecisionImplementation>();
 	private definitions: Map<string, DecisionDefinition>;
 
-	constructor(definitions: readonly DecisionDefinition[] = defaultDefinitions) {
+	constructor(
+		definitions: readonly DecisionDefinition[] = defaultDefinitions,
+		onTrace?: (event: Record<string, unknown>) => void,
+	) {
+		this.onTrace = onTrace;
 		this.definitions = new Map();
 		for (const definition of definitions) {
 			if (this.definitions.has(definition.id)) throw new Error(`Duplicate definition: ${definition.id}`);
 			this.definitions.set(definition.id, { ...definition });
+		}
+	}
+
+	/** Out-of-band diagnostics must not mutate session state or control admission. */
+	trace(event: Record<string, unknown>): void {
+		if (!this.onTrace) return;
+		try {
+			this.onTrace?.(structuredClone({ schemaVersion: 1, timestamp: new Date().toISOString(), ...event }));
+		} catch {
+			/* The experiment sink records write failures separately. */
 		}
 	}
 
@@ -107,6 +122,7 @@ export class DecisionRegistry {
 		const start = performance.now();
 		const implementation = this.implementations.get(implementationId);
 		const invocation: DecisionInvocation = {
+			...(this.onTrace ? { traceId: randomUUID() } : {}),
 			result: { status: "failed", reason: "invalid-input" },
 			implementationId,
 			implementationVersion: implementation?.version ?? "unknown",
@@ -122,12 +138,36 @@ export class DecisionRegistry {
 		const abort = () => controller.abort();
 		let onAbort: (() => void) | undefined;
 		let started = false;
+		let candidateIds: string[] = [];
 		try {
 			// Capture once before yielding: identity, evaluation and validation refer to the same input.
 			const request = structuredClone(requestInput);
 			const policy = structuredClone(policyInput);
 			invocation.inputDigest = digestJson(request);
 			invocation.policyDigest = digestJson(policy);
+			this.trace({
+				event: "start",
+				traceId: invocation.traceId,
+				request,
+				policy,
+				implementation: implementationId,
+				version: invocation.implementationVersion,
+				inputDigest: invocation.inputDigest,
+				policyDigest: invocation.policyDigest,
+				limits: {
+					timeoutMs: options.timeoutMs ?? 5000,
+					maxInputBytes: options.maxInputBytes ?? 1024 * 1024,
+					maxCandidates: options.maxCandidates ?? 1024,
+					budgetRemaining: options.budget?.remaining ?? null,
+					maxCostUsd: options.maxCostUsd ?? null,
+					cancelled: options.signal?.aborted ?? false,
+				},
+			});
+			candidateIds = Array.isArray(request.candidates)
+				? request.candidates
+						.filter((candidate) => candidate && typeof candidate.id === "string")
+						.map(({ id }) => id)
+				: [];
 			const maxInputBytes = options.maxInputBytes ?? 1024 * 1024;
 			const maxCandidates = options.maxCandidates ?? 1024;
 			if (
@@ -206,10 +246,33 @@ export class DecisionRegistry {
 				}, timeoutMs);
 			});
 			const result = await Promise.race([
-				Promise.resolve().then((): Promise<DecisionResult> | DecisionResult => {
+				Promise.resolve().then(async (): Promise<DecisionResult> => {
 					if (controller.signal.aborted) return { status: "abstained", reason: "cancelled" };
 					started = true;
-					return implementation.evaluate(structuredClone(request), isolatedPolicy, controller.signal);
+					try {
+						const result = await implementation.evaluate(
+							structuredClone(request),
+							isolatedPolicy,
+							controller.signal,
+						);
+						this.trace({
+							event: "provider_result",
+							traceId: invocation.traceId,
+							result,
+							scores: Object.fromEntries(request.candidates.map(({ id }) => [id, result.scores?.[id] ?? null])),
+							elapsedMs: performance.now() - start,
+							afterAbort: controller.signal.aborted,
+						});
+						return result;
+					} catch (error) {
+						this.trace({
+							event: "provider_error",
+							traceId: invocation.traceId,
+							reason: "implementation-error",
+							elapsedMs: performance.now() - start,
+						});
+						throw error;
+					}
 				}),
 				stopped,
 			]);
@@ -269,6 +332,19 @@ export class DecisionRegistry {
 			options.signal?.removeEventListener("abort", abort);
 			if (onAbort) controller.signal.removeEventListener("abort", onAbort);
 			invocation.elapsedMs = performance.now() - start;
+			this.trace({
+				event: "end",
+				traceId: invocation.traceId,
+				invocation,
+				started,
+				scores: Object.fromEntries(candidateIds.map((id) => [id, invocation.result.scores?.[id] ?? null])),
+				scoresUnavailableReason:
+					invocation.result.scores && candidateIds.every((id) => invocation.result.scores?.[id] !== undefined)
+						? null
+						: invocation.result.status === "proposed"
+							? "not_scored"
+							: invocation.result.reason,
+			});
 		}
 		return invocation;
 	}

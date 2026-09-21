@@ -51,6 +51,7 @@ export function createConfiguredDecisionExtension(
 		cwd?: string;
 		implementations?: DecisionImplementation[];
 		onError?(error: unknown): void;
+		onTrace?(event: Record<string, unknown>): void;
 	} = {},
 ): InlineExtension {
 	try {
@@ -77,7 +78,7 @@ export function createConfiguredDecisionExtension(
 				settings.policyPackages.some((path) => typeof path !== "string" || !path))
 		)
 			throw new Error("Invalid policy package paths");
-		const registry = new DecisionRegistry();
+		const registry = new DecisionRegistry(undefined, options.onTrace);
 		registry.register(keepCurrentImplementation);
 		registry.register(heuristicImplementation);
 		if (options.client) registry.register(createJevImplementation(options.client));
@@ -178,7 +179,9 @@ export function createConfiguredDecisionExtension(
 		};
 		const extensions: InlineExtension[] = [];
 		if (settings.components?.recovery || settings.components?.evidence || settings.components?.specialists)
-			extensions.push(createDecisionWorkflowsExtension(settings.components, evaluate));
+			extensions.push(
+				createDecisionWorkflowsExtension(settings.components, evaluate, (record) => registry.trace(record)),
+			);
 		if (settings.components?.context) {
 			extensions.push(createContextRecallExtension({ maxChars: settings.components.context.recallMaxChars }));
 			extensions.push(
@@ -199,7 +202,14 @@ export function createConfiguredDecisionExtension(
 					...(settings.components?.context
 						? { contextRequirements: (context) => contextRequirements(context, settings.components!.context!) }
 						: {}),
-					...(settings.components?.skills ? { preparePhase: createDecisionSkillSelector({ evaluate }) } : {}),
+					...(settings.components?.skills
+						? {
+								preparePhase: createDecisionSkillSelector({
+									evaluate,
+									onRecord: (record) => registry.trace(record),
+								}),
+							}
+						: {}),
 				}),
 			);
 		if (settings.components)
@@ -207,6 +217,8 @@ export function createConfiguredDecisionExtension(
 				createDecisionComponentsExtension({
 					...settings.components,
 					evaluate,
+					onRecord: (record) =>
+						registry.trace({ event: "outcome", traceId: record.invocation?.traceId, ...record }),
 				}),
 			);
 		return {

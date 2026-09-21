@@ -1,0 +1,50 @@
+{
+	"generator": { "provider": "meta", "model": "muse-spark-1.3-contributor", "effort": "xhigh" },
+	"controller": { "provider": "meta", "model": "muse-spark-1.3-contributor", "effort": "low", "maxTokens": 4096 },
+	"routingEnabled": true,
+	"allowContributorDataUse": true,
+	"models": { "providers": { "meta": {
+		"api": "openai-responses", "baseUrl": "https://api.meta.ai/v1", "apiKey": "$MODEL_API_KEY",
+		"models": [
+			{ "id": "muse-spark-1.3", "reasoning": true, "input": ["text", "image"], "contextWindow": 1048576, "maxTokens": 131072, "thinkingLevelMap": { "off": null, "xhigh": "xhigh" }, "cost": { "input": 1.25, "output": 4.25, "cacheRead": 0.15, "cacheWrite": 0 } },
+			{ "id": "muse-spark-1.2", "reasoning": true, "input": ["text", "image"], "contextWindow": 1048576, "maxTokens": 131072, "thinkingLevelMap": { "off": null, "xhigh": "xhigh" }, "cost": { "input": 1.25, "output": 4.25, "cacheRead": 0.15, "cacheWrite": 0 } },
+			{ "id": "muse-spark-1.3-contributor", "reasoning": true, "input": ["text", "image"], "contextWindow": 1048576, "maxTokens": 131072, "thinkingLevelMap": { "off": null, "xhigh": "xhigh" }, "cost": { "input": 0.1, "output": 0.2, "cacheRead": 0.002, "cacheWrite": 0 } },
+			{ "id": "muse-spark-1.2-contributor", "reasoning": true, "input": ["text", "image"], "contextWindow": 1048576, "maxTokens": 131072, "thinkingLevelMap": { "off": null, "xhigh": "xhigh" }, "cost": { "input": 0.1, "output": 0.2, "cacheRead": 0.002, "cacheWrite": 0 } }
+		]
+	} } },
+	"maxTurns": 200,
+	"decisions": {
+		"timeoutMs": 30000,
+		"maxComponentDecisions": 200,
+		"routing": {
+			"binding": { "implementation": "jev.typed", "policy": { "instructions": "Choose the least expensive capable model and reasoning effort for this phase using task complexity, failures, and previous decisions. Retain current configuration when uncertain. Price and cache admission remain host-owned.", "minProbability": 0.7 } },
+			"phaseBinding": { "implementation": "jev.typed", "policy": { "instructions": "Stay in the current phase until tool evidence shows a real transition: investigate locates requirements and code; implement edits the solution; verify tests and reviews the changes. Do not change phase merely because a turn ended.", "minProbability": 0.7 } },
+			"phases": ["investigate", "implement", "verify"],
+			"transitions": { "investigate": ["implement"], "implement": ["investigate", "verify"], "verify": ["implement"] },
+			"timeoutMs": 30000, "maxDecisions": 12, "maxPhaseDecisions": 80,
+			"escalationMaxUsd": 0.25,
+			"requiredTools": ["read", "bash", "edit", "write", "grep", "find", "ls", "recall_output", "recall_context"],
+			"estimate": { "requests": 3, "outputTokens": 6000, "marginUsd": 0.01, "decisionCostUsd": 0.01 },
+			"routes": [
+				{ "id": "spark13-xhigh", "description": "Muse Spark 1.3 for difficult implementation or reasoning", "provider": "meta", "model": "muse-spark-1.3-contributor", "effort": "xhigh", "tools": ["read", "bash", "edit", "write", "grep", "find", "ls", "recall_output", "recall_context"] },
+				{ "id": "spark13-high", "description": "Muse Spark 1.3 with high reasoning", "provider": "meta", "model": "muse-spark-1.3-contributor", "effort": "high", "tools": ["read", "bash", "edit", "write", "grep", "find", "ls", "recall_output", "recall_context"] },
+				{ "id": "spark13-low", "description": "Muse Spark 1.3 with low reasoning for routine tasks", "provider": "meta", "model": "muse-spark-1.3-contributor", "effort": "low", "tools": ["read", "bash", "edit", "write", "grep", "find", "ls", "recall_output", "recall_context"] },
+				{ "id": "spark12-high", "description": "Muse Spark 1.2 with high reasoning; not a cheaper per-token tariff", "provider": "meta", "model": "muse-spark-1.2-contributor", "effort": "high", "tools": ["read", "bash", "edit", "write", "grep", "find", "ls", "recall_output", "recall_context"] }
+			]
+		},
+		"components": {
+			"output": { "tools": ["bash"], "minChars": 4000, "maxChars": 30000, "blockLines": 20, "minReduction": 0.2 },
+			"retrieval": { "minChars": 2000, "maxChars": 20000, "minReduction": 0.2 },
+			"completion": { "maxPasses": 2 },
+			"recovery": { "tools": ["bash", "edit", "write"], "maxPerTask": 10 },
+			"context": { "cacheAware": true }
+		},
+		"bindings": {
+			"output.select/v1": { "implementation": "jev.typed", "policy": { "instructions": "Keep output needed to solve the active task, understand failures, or verify completion. Preserve uncertain evidence.", "minProbability": 0.7, "criteria": { "true": "Useful or potentially necessary evidence", "false": "Clearly redundant or irrelevant output" } } },
+			"retrieval.rank/v1": { "implementation": "jev.typed", "policy": { "instructions": "Keep search results that locate relevant implementation, tests, or dependencies for the task. Preserve uncertain matches.", "minProbability": 0.7, "criteria": { "true": "Potentially relevant match", "false": "Clearly irrelevant match" } } },
+			"context.retention/v1": { "implementation": "jev.typed", "policy": { "instructions": "Assess whether this call or result remains necessary for the current task, including constraints, failures, evidence and unfinished work.", "minProbability": 0.7, "criteria": { "true": "Still useful or uncertain", "false": "Safely dispensable, superseded or irrelevant" } } },
+			"completion.verify/v1": { "implementation": "jev.typed", "policy": { "instructions": "Accept only when implementation and available checks support completion. Verify when work or checks remain. Clarify only when indispensable requirements are missing; this benchmark has no interactive user.", "minProbability": 0.7 } },
+			"recovery.action/v1": { "implementation": "jev.typed", "policy": { "instructions": "Use current error and past decisions. Inspect when investigation is needed before retrying. Continue when the agent can safely proceed. Clarify only for genuinely missing authority or requirements; no interactive user is available.", "minProbability": 0.7 } }
+		}
+	}
+}
