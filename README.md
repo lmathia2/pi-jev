@@ -29,6 +29,12 @@ To learn more about Pi:
 
 Jev replaces selected **judgments**, not the execution engine. Pi still builds prompts, calls the selected model, validates tool arguments, executes tools, stores sessions and performs compaction. A Jev proposal cannot grant permissions or invent an available model/tool.
 
+### Implementation status
+
+The guarded routing and bounded workflows in [ADR 6](docs/adr/0006-bounded-workflows-and-gap-closure.md) are implemented, not just planned. This includes same-phase pinning, conservative switching costs, component/skill invocation metadata, recovery guidance, evidence classification, specialist consultations, summary-request admission and optional durable phase reservations with an explicit disk flush before inference.
+
+Verification for this implementation: 196 offline tests passed and `npm run check` passed; two provider-backed summarization tests were skipped. These checks establish integration behavior, not semantic quality or cost savings. Components remain opt-in, live experiments remain deferred, and merging does not enable Jev automatically. Use the [workflow guide](docs/jev-workflows.md) for configuration and [experiment checklist](docs/jev-experiments.md) for remaining measurements.
+
 ### What changes when enabled
 
 | Component | Decision and integration point | Disabled behavior |

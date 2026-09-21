@@ -1,6 +1,6 @@
 # ADR 6: Guarded routing and bounded workflows
 
-Status: accepted. Date: 2026-09-21. Supplements ADRs 2–5.
+Status: accepted and implemented. Date: 2026-09-21. Supplements ADRs 2–5.
 
 ## Problem and concrete failures
 
@@ -19,6 +19,8 @@ Two identical `/decision-phase verify` commands created different entry IDs, per
 
 ## Limits and consequences
 
+Migration: configure complete `jev.decisions.routing` presets and use `mode: "decisions"`. `mode: "route"` is only a migration alias when that configuration exists; legacy partial profiles alone do not execute. Existing defaults remain off. SDK hosts must explicitly provide their session as `persistence` to opt into durable reservation storage; this is not automatically installed in every host.
+
 The smallest bounded specialist path is a single tool-free model consultation using supplied evidence, not a replacement subagent engine. It cannot gather new evidence itself; ordinary parent tools supply it. Source IDs establish session provenance, not factual correctness. Advisory specialist prose may still be wrong. Recovery guidance never automatically retries a side effect or changes phase/model.
 
 Summary and cost admission are conservative estimates, not provider billing/tokenizer guarantees. Cold-target arithmetic intentionally rejects some switches that might have saved money with real cache hits. Independent live experiments remain deferred.
@@ -26,3 +28,7 @@ Summary and cost admission are conservative estimates, not provider billing/toke
 Existing registry, session metadata, tool dispatch and provider authentication supply the runtime. No dependencies, optimizer daemon, plugin installer or second durable store were added. Offline tests validate wiring, guards and fallback, not semantic quality.
 
 See [configuration and limits](../jev-workflows.md), [workflow code](../../packages/coding-agent/src/jev/decision-workflows.ts), and [implementation log](../jev-implementation-log.md).
+
+## Verification
+
+196 offline tests passed across decision-library, coding-agent, session and compaction coverage. Regressions cover duplicate phase commands, guarded legacy migration, trace metadata, invalid/stale/over-budget consultation rejection, source provenance, bounded recovery, summary admission and reopening durable reservations before inference. Repository checks passed; two live summarization cases were skipped. No provider quality, savings or production-readiness claim follows from this result.

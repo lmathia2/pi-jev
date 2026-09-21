@@ -1,6 +1,6 @@
 # Architecture decisions
 
-Reviewed 2026-09-20. These records describe the implementation, not an assertion that every item in the historical roadmap is complete.
+Reviewed 2026-09-21. These records describe the implementation, not an assertion that every item in the historical roadmap is complete. ADR 6 supplements the earlier records with implemented gap-closure behavior; older roadmap proposals are not the current runtime contract.
 
 | Record | Decision |
 |---|---|
@@ -12,6 +12,11 @@ Reviewed 2026-09-20. These records describe the implementation, not an assertion
 | [6. Guarded routing and bounded workflows](0006-bounded-workflows-and-gap-closure.md) | Idempotent phase selection, guarded legacy migration, conservative switching, full metadata, recovery/evidence/consultation tools, summary admission and durable reservations |
 
 ## Review corrections
+
+- Repeated explicit phase commands no longer create new routing boundaries. Configured legacy routing cannot bypass the phase/cache guards; partial profiles require migration.
+- Switch admission no longer relies on hypothetical target cache hits. Component and skill traces retain invocation identity, timing and known/unknown usage.
+- Recovery, evidence and single-request specialist consultations now have concrete opt-in workflows and persisted task allowances. They do not create an autonomous tool-using subagent tree.
+- Summary requests are admitted before provider execution. Durable phase reservations explicitly flush before inference, including sessions without an assistant response.
 
 - Capturing caller inputs after yielding could evaluate modified data under the wrong identity. The registry now snapshots requests/policies before yielding; sparse JSON arrays are rejected rather than silently hashing like different input.
 - Authentication and model notifications introduced a split preset application: a listener could change effort, then routing overwrote it. The host now commits model/effort/tools synchronously before notification; subsequent changes win.
@@ -27,5 +32,7 @@ Reviewed 2026-09-20. These records describe the implementation, not an assertion
 ## Review scope and verification
 
 Tests target the failures above and lifecycle boundaries using fake providers/implementations, plus the existing library and resource-loader suites. No new testing framework or real-provider suite was introduced. The [implementation log](../jev-implementation-log.md) records passing final checks and the catalog/test fixes that resolved earlier baseline failures.
+
+Gap-closure verification: 174 coding-agent/session/compaction tests and 22 decision-library tests passed. Two live summarization tests were skipped. Repository checks passed, including TypeScript and browser smoke. See [workflow configuration](../jev-workflows.md) for enablement, fallbacks and limits; merge does not activate components or run paid experiments.
 
 No production quality or cost claim follows from these tests. Real comparisons and GEPA runs remain in the [experiment queue](../jev-experiments.md). No second plugin installer, search runtime, or optimizer daemon was added.
