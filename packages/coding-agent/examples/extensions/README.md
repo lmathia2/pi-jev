@@ -42,6 +42,7 @@ cp permission-gate.ts ~/.pi/agent/extensions/
 | `truncated-tool.ts` | Wraps ripgrep with proper output truncation (50KB/2000 lines) |
 | `ssh.ts` | Delegate all tools to a remote machine via SSH using pluggable operations |
 | `subagent/` | Delegate tasks to specialized subagents with isolated context windows |
+| `webmcp-browser/` | Open a Playwright browser and discover or call tools exposed by WebMCP-enabled pages |
 
 ### Commands & UI
 
@@ -134,6 +135,7 @@ cp permission-gate.ts ~/.pi/agent/extensions/
 | Extension | Description |
 |-----------|-------------|
 | `with-deps/` | Extension with its own package.json and dependencies (demonstrates jiti module resolution) |
+| `webmcp-browser/` | Browser extension with a pinned Playwright runtime dependency |
 | `file-trigger.ts` | Watches a trigger file and injects contents into conversation |
 
 ## Writing Extensions
