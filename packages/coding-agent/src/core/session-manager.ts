@@ -14,6 +14,7 @@ import {
 	closeSync,
 	createReadStream,
 	existsSync,
+	fsyncSync,
 	mkdirSync,
 	openSync,
 	readdirSync,
@@ -1037,6 +1038,19 @@ export class SessionManager {
 		return this.sessionFile;
 	}
 
+	/** Explicitly persist buffered entries before admitting an external effect, even before the first assistant. */
+	flush(): void {
+		if (!this.persist || !this.sessionFile) return;
+		const fd = openSync(this.sessionFile, this.flushed ? "r" : "wx");
+		try {
+			if (!this.flushed) for (const entry of this.fileEntries) writeFileSync(fd, `${JSON.stringify(entry)}\n`);
+			fsyncSync(fd);
+		} finally {
+			closeSync(fd);
+		}
+		this.flushed = true;
+	}
+
 	_persist(entry: SessionEntry): void {
 		if (!this.persist || !this.sessionFile) return;
 
@@ -1052,15 +1066,7 @@ export class SessionManager {
 		}
 
 		if (!this.flushed) {
-			const fd = openSync(this.sessionFile, "wx");
-			try {
-				for (const e of this.fileEntries) {
-					writeFileSync(fd, `${JSON.stringify(e)}\n`);
-				}
-			} finally {
-				closeSync(fd);
-			}
-			this.flushed = true;
+			this.flush();
 		} else {
 			appendFileSync(this.sessionFile, `${JSON.stringify(entry)}\n`);
 		}

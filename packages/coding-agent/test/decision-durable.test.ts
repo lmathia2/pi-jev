@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { BACKGROUND_CONTEXT, type LaneConfiguration, withAbortSignal } from "@earendil-works/pi-agent-core";
 import {
 	DecisionRegistry,
@@ -7,6 +10,7 @@ import {
 	recordedImplementation,
 } from "@earendil-works/pi-decisions";
 import { describe, expect, it } from "vitest";
+import { SessionManager } from "../src/core/session-manager.ts";
 import { createDecisionGenerationRouter } from "../src/jev/decision-durable.ts";
 
 const base: LaneConfiguration = {
@@ -39,6 +43,68 @@ const policy: ResolvedPolicy = { artifact, digest: digestJson(artifact) };
 const event = { lane: "main", runId: "run", configuration: base, messages: [], attempt: 1 };
 
 describe("durable decision adapter", () => {
+	it("flushes a reservation before inference even without an assistant message", async () => {
+		const directory = mkdtempSync(join(tmpdir(), "pi-decision-persistence-"));
+		try {
+			const persistence = SessionManager.create(directory, directory);
+			const registry = new DecisionRegistry();
+			let calls = 0;
+			registry.register({
+				id: "fixture",
+				version: "1",
+				definitions: ["generation.route/v1"],
+				async evaluate() {
+					calls++;
+					const reopened = SessionManager.open(persistence.getSessionFile()!);
+					expect(reopened.getBranch()).toMatchObject([{ customType: "durable-decision-reservation" }]);
+					return { status: "abstained", reason: "simulated interruption" };
+				},
+			});
+			const options = {
+				registry,
+				policy,
+				routes: { "deep-high": selected },
+				persistence,
+				buildRequest: () => request,
+				admit: () => true,
+			};
+			await createDecisionGenerationRouter(options)(event, BACKGROUND_CONTEXT);
+			await createDecisionGenerationRouter({
+				...options,
+				persistence: SessionManager.open(persistence.getSessionFile()!),
+			})(event, BACKGROUND_CONTEXT);
+			expect(calls).toBe(1);
+		} finally {
+			rmSync(directory, { recursive: true, force: true });
+		}
+	});
+	it("pins a phase across adapter restarts and permits a new boundary", async () => {
+		const registry = new DecisionRegistry();
+		registry.register(
+			recordedImplementation("fixture", {
+				"phase-1": { status: "proposed", answer: { kind: "select", candidateId: "deep-high" } },
+				"phase-2": { status: "proposed", answer: { kind: "select", candidateId: "deep-high" } },
+			}),
+		);
+		const persistence = SessionManager.inMemory();
+		let boundaryId = "phase-1";
+		const options = {
+			registry,
+			policy,
+			routes: { "deep-high": selected },
+			persistence,
+			buildRequest: () => ({ ...request, boundaryId }),
+			admit: () => true,
+		};
+		expect(await createDecisionGenerationRouter(options)(event, BACKGROUND_CONTEXT)).toEqual({
+			configuration: selected,
+		});
+		expect(await createDecisionGenerationRouter(options)(event, BACKGROUND_CONTEXT)).toBeUndefined();
+		boundaryId = "phase-2";
+		expect(await createDecisionGenerationRouter(options)(event, BACKGROUND_CONTEXT)).toEqual({
+			configuration: selected,
+		});
+	});
 	it("selects a complete configured model-effort pair from private host state", async () => {
 		const registry = new DecisionRegistry();
 		registry.register(

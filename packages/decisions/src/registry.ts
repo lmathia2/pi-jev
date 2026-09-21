@@ -27,12 +27,19 @@ export function digestJson(value: unknown): string {
 }
 
 export const defaultDefinitions: readonly DecisionDefinition[] = [
-	...["generation.phase/v1", "generation.route/v1", "tools.profile/v1", "tools.review/v1", "completion.verify/v1"].map(
-		(id) => ({
-			id,
-			answerKind: "select" as const,
-		}),
-	),
+	...[
+		"generation.phase/v1",
+		"generation.route/v1",
+		"tools.profile/v1",
+		"tools.review/v1",
+		"completion.verify/v1",
+		"recovery.action/v1",
+		"specialist.select/v1",
+		"evidence.verify/v1",
+	].map((id) => ({
+		id,
+		answerKind: "select" as const,
+	})),
 	...["context.select/v1", "output.select/v1", "skills.select/v1", "retrieval.rank/v1"].map((id) => ({
 		id,
 		answerKind: "subset" as const,
@@ -107,6 +114,7 @@ export class DecisionRegistry {
 			policyDigest: "",
 			elapsedMs: 0,
 			requestCount: 0,
+			tokenCount: null,
 			costUsd: null,
 		};
 		let timer: ReturnType<typeof setTimeout> | undefined;
@@ -219,6 +227,7 @@ export class DecisionRegistry {
 					return invocation;
 				}
 				invocation.requestCount = result.usage.requests;
+				invocation.tokenCount = result.usage.tokens ?? null;
 				invocation.costUsd = result.usage.costUsd ?? null;
 			}
 			if (options.signal?.aborted) {

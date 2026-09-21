@@ -102,7 +102,8 @@ export function estimateRoutingCosts(input: RoutingCostInput): { stay: number; s
 		// A target write rate of zero means no separate cache-write tariff, not free cold input.
 		switch:
 			(prompt * Math.max(target.input, target.cacheWrite) +
-				(requests - 1) * prompt * (target.cacheRead || target.input) +
+				// Do not finance a switch with hypothetical future cache hits.
+				(requests - 1) * prompt * Math.max(target.input, target.cacheWrite) +
 				output * target.output) /
 				1e6 +
 			input.decisionCostUsd,
@@ -274,6 +275,13 @@ export function createDecisionRoutingExtension(options: {
 				handler: async (argument, context) => {
 					if (!context.isIdle()) throw new Error("Phase changes require an idle boundary");
 					if (!settings.phases.includes(argument.trim())) throw new Error("Unknown decision phase");
+					const entry = [...context.sessionManager.getBranch()]
+						.reverse()
+						.find((entry) => entry.type === "custom" && entry.customType === "decision-phase");
+					const current =
+						options.phase?.(context) ??
+						(entry?.type === "custom" ? (entry.data as { phase: string }).phase : settings.phases[0]);
+					if (current === argument.trim()) return;
 					pi.appendEntry("decision-phase", { phase: argument.trim() });
 				},
 			});

@@ -9,6 +9,7 @@ Reviewed 2026-09-20. These records describe the implementation, not an assertion
 | [3. Evidence and offline learning](0003-evidence-and-offline-learning.md) | Recoverable selection, immutable comparisons and operator-controlled learning |
 | [4. Context-window management](0004-context-window-management.md) | Preconstruction tool-history selection and estimated admission, with optional cache-aware reuse/cost preference |
 | [5. Decision responsibility map](0005-decision-responsibility-map.md) | Inputs, proposals, Pi authority, assumptions and limits for every wired decision area |
+| [6. Guarded routing and bounded workflows](0006-bounded-workflows-and-gap-closure.md) | Idempotent phase selection, guarded legacy migration, conservative switching, full metadata, recovery/evidence/consultation tools, summary admission and durable reservations |
 
 ## Review corrections
 

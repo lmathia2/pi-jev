@@ -1,11 +1,6 @@
 import type { Fetch } from "@typesafe-ai/sdk";
 import type { InlineExtension } from "../core/extensions/types.ts";
-import {
-	createGenerationRoutingExtension,
-	type GenerationRouteProfile,
-	type GenerationRouteProvider,
-	type GenerationRouteRecord,
-} from "../core/generation-routing.ts";
+import type { GenerationRouteProvider, GenerationRouteRecord } from "../core/generation-routing.ts";
 import type { JevSettings } from "../core/settings-manager.ts";
 import { createJevClient, decideJevRoute } from "./client.ts";
 import { createContextRecallExtension } from "./context-recall.ts";
@@ -72,7 +67,7 @@ export function createConfiguredGenerationRoutingExtension(
 ): InlineExtension | undefined {
 	const apiKey = options.apiKey === undefined ? process.env.TYPESAFE_API_KEY?.trim() : options.apiKey.trim();
 	const mode = settings.mode ?? "off";
-	if (mode === "decisions")
+	if (mode === "decisions" || (mode === "route" && settings.decisions))
 		return createConfiguredDecisionExtension(settings.decisions ?? {}, {
 			cwd: options.cwd,
 			...(apiKey
@@ -87,25 +82,16 @@ export function createConfiguredGenerationRoutingExtension(
 				: {}),
 		});
 	if (mode !== "route" || !apiKey) return undefined;
-	const provider = createJevGenerationRouteProvider({
-		apiKey,
-		baseURL: options.baseURL,
-		fetch: options.fetch,
-		timeoutMs: settings.timeoutMs,
-		minProbability: settings.minProbability,
-		minFit: settings.minFit,
-	});
-	const routes: Record<string, GenerationRouteProfile> = {};
-	for (const [id, route] of Object.entries(settings.routes ?? {})) {
-		routes[id] = {
-			...(route.provider && route.model ? { model: { provider: route.provider, id: route.model } } : {}),
-			...(route.thinkingLevel ? { thinkingLevel: route.thinkingLevel } : {}),
-			...(route.tools ? { tools: route.tools } : {}),
-		};
-	}
-	return createGenerationRoutingExtension({
-		provider,
-		routes,
-		onRecord: options.onRecord,
-	});
+	return {
+		name: "legacy-routing-migration",
+		hidden: true,
+		factory(pi) {
+			pi.on("session_start", (_event, context) => {
+				context.ui.notify(
+					"Legacy Jev profiles are not phase-safe. Configure jev.decisions with complete model/effort/tool presets; routing remains disabled until migrated.",
+					"warning",
+				);
+			});
+		},
+	};
 }

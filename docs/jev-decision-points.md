@@ -1,6 +1,8 @@
 # Jev decision points: current code review
 
-Reviewed 2026-09-20, with an implementation checkpoint added during the decision-library rollout. This document distinguishes execution boundaries, opt-in integrations and proposed policies. Shadow mode remains removed. `off` is the default; legacy `route` and new `decisions` configuration paths coexist. Live experiments remain deferred.
+Reviewed 2026-09-20; updated 2026-09-21. Shadow mode remains removed. `off` is the default; `route` now aliases the guarded `decisions` runtime only with complete decision configuration. Live experiments remain deferred. [ADR 6](adr/0006-bounded-workflows-and-gap-closure.md) and [workflow configuration](jev-workflows.md) supersede the legacy findings and proposal language retained below.
+
+Current gap-closure status: repeated same-phase commands are no-ops; switching assumes cold target inputs for the whole configured horizon; component/skill traces retain invocation metadata; recovery guidance, evidence classification and tool-free specialist consultations are configured workflows; summary requests have shared estimated admission; durable adapters accept host-session reservations across restart. These are tested runtime paths, not claims of measured quality or guaranteed cache savings.
 
 ## Implementation checkpoint
 
@@ -10,13 +12,15 @@ The normal `AgentSession` has a `before_generation` extension boundary before in
 
 The new [durable adapter](../packages/coding-agent/src/jev/decision-durable.ts) invokes the same registry from `before_generation`. Its host supplies snapshots, phase identity and live admission checks through the intended injected API. The durable driver checkpoints the returned configuration before the request and reuses it for retry; the system-prompt callback receives the chosen configuration directly. This is a separate host integration, not an unfinished CLI routing path.
 
-[Component adapters](../packages/coding-agent/src/jev/decision-components.ts) cover fresh output selection with exact recall, advisory tool review, bounded completion follow-ups and grouped fresh built-in `grep`/`find` results. Truncated retrieval results pass through unchanged. [Skill selection](../packages/coding-agent/src/jev/decision-selection.ts) uses the full loaded roster through routing's `preparePhase`, before prompt assembly and routing cost evaluation; explicit skills survive. Custom retrieval sources supply candidates through the shared API. Evidence classification, semantic recovery and specialist dispatch remain deferred.
+[Component adapters](../packages/coding-agent/src/jev/decision-components.ts) cover fresh output selection with exact recall, advisory tool review, bounded completion follow-ups and grouped fresh built-in `grep`/`find` results. Truncated retrieval results pass through unchanged. [Skill selection](../packages/coding-agent/src/jev/decision-selection.ts) runs before routing/prompt assembly and retains explicit skills. [Workflows](jev-workflows.md) add evidence classification, recovery guidance and one-shot specialist consultations. Custom retrieval sources still supply candidates through the shared API.
 
-Policy questions and tunable parameters are configurable data. Optional `policyDigests` SHA-256 pins keyed by `id@version` enforce immutable policy content across restarts. No paid optimizer run or automatic live promotion is implemented. The full repository check remains blocked by existing AI model-catalogue errors; focused tests are not a production-readiness claim.
+Policy questions and tunable parameters are configurable data. Optional `policyDigests` pins enforce immutable policy content across restarts. No paid optimizer run or automatic live promotion is implemented. Repository checks now pass; see the dated implementation log. Offline checks are not a production-readiness claim.
 
 The opt-in [tool-history context planner](../packages/coding-agent/src/jev/decision-context.ts) uses `context_management` before construction for dispatch, manual compaction and overflow. `context.retention/v1` scores call and result evidence independently; configurable thresholds choose keep, exact excerpt or paired omission. User/assistant text remains unchanged, stored originals remain available through recall discovery, and unjudged or protected interactions stay intact. Insufficient reduction falls back to existing summary compaction. Structural and estimated total-budget admission happen during preparation, not after rendering.
 
 ## Legacy route mode and original review baseline
+
+Historical baseline only: the settings-selected legacy path described here has been replaced by the guarded alias/migration diagnostic. Explicit low-level legacy helper exports still exist for custom hosts. Current component responsibilities are in [ADR 5](adr/0005-decision-responsibility-map.md).
 
 The CLI uses `AgentSession` and the ordinary `Agent` loop. Legacy `jev.mode: "route"` routes at `before_agent_start`, once per submitted prompt that starts a run. It receives only `event.prompt` and a cancellation signal. Tool results, the conversation, pending work, current model, and budget are not passed through that older provider contract. Queued steering and subsequent tool turns do not independently invoke the legacy router. New integrations should use `jev.mode: "decisions"` and its pre-prompt boundary.
 
@@ -78,7 +82,7 @@ The normal extension context exposes `sessionManager`, `model`, `thinkingLevel`,
 
 Give each component a typed input and finite output. Keep a shared Jev transport, timeout handling, result validation, and trace format. Use an explicit default implementation for each component: current profile, normal skill selection, original context, existing finish behavior. Do not require every decision to use the four generation route labels.
 
-Per-definition bindings select registered implementations under `jev.mode: "decisions"`. Output selection, completion, tool review, phase-owned skills and built-in retrieval have configurable extension adapters. Custom retrieval and durable state use explicit injected APIs; specialists remain deferred.
+Per-definition bindings select registered implementations under `jev.mode: "decisions"`. Output, completion, review, skills, retrieval, recovery, evidence and specialist consultations have configured adapters. Custom retrieval remains injected; durable hosts can reuse their existing session for phase reservations.
 
 ### Apply decisions at the correct boundary
 

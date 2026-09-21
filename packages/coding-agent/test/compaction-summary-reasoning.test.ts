@@ -102,6 +102,16 @@ describe("generateSummary reasoning options", () => {
 		);
 	});
 
+	it("rejects oversized summary requests before provider calls without changing history", async () => {
+		const history: AgentMessage[] = [{ role: "user", content: "x".repeat(10000), timestamp: 1 }];
+		const original = structuredClone(history);
+		await expect(
+			generateSummary(history, { ...createModel(false), contextWindow: 4096 }, 2000, "test-key"),
+		).rejects.toThrow("Summary request exceeds");
+		expect(completeSimpleMock).not.toHaveBeenCalled();
+		expect(history).toEqual(original);
+	});
+
 	it("uses fresh routing sessions without prompt caching", async () => {
 		await generateSummary(messages, createModel(false), 2000, "test-key");
 		await generateSummary(messages, createModel(false), 2000, "test-key");

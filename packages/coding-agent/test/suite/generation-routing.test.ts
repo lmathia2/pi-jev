@@ -41,6 +41,44 @@ describe("generation routing", () => {
 		).toBeUndefined();
 	});
 
+	it("routes the legacy alias through the phase-pinned runtime with complete configuration", async () => {
+		const extension = createConfiguredGenerationRoutingExtension(
+			{
+				mode: "route",
+				decisions: {
+					routing: {
+						binding: { implementation: "baseline.keep-current", policy: {} },
+						phases: ["work"],
+						requiredTools: [],
+						routes: [
+							{
+								id: "current",
+								description: "Current",
+								provider: "faux",
+								model: "faux-1",
+								effort: "off",
+								tools: [],
+							},
+						],
+						timeoutMs: 1000,
+						maxDecisions: 5,
+						estimate: { requests: 1, outputTokens: 100, marginUsd: 0, decisionCostUsd: 0 },
+					},
+				},
+			},
+			{ apiKey: "" },
+		);
+		harness = await createHarness({ extensionFactories: [extension!] });
+		harness.setResponses([fauxAssistantMessage("first"), fauxAssistantMessage("second")]);
+		await harness.session.prompt("task");
+		await harness.session.prompt("continue");
+		expect(
+			harness.sessionManager
+				.getBranch()
+				.filter((entry) => entry.type === "custom" && entry.customType === "decision-route"),
+		).toHaveLength(1);
+	});
+
 	it("falls back on provider errors and isolates telemetry callback failures", async () => {
 		const records: GenerationRouteRecord[] = [];
 		harness = await createHarness({
@@ -98,7 +136,7 @@ describe("generation routing", () => {
 		]);
 	});
 
-	it("maps a configured Jev decision through the same routing component", async () => {
+	it("does not apply legacy profiles without phase-safe decision configuration", async () => {
 		const fetch: Fetch = async () =>
 			new Response(
 				JSON.stringify({
@@ -129,6 +167,6 @@ describe("generation routing", () => {
 
 		await harness.session.prompt("task");
 
-		expect(harness.session.thinkingLevel).toBe("high");
+		expect(harness.session.thinkingLevel).toBe("off");
 	});
 });

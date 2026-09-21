@@ -110,8 +110,15 @@ it("pins routing across real tool turns, new user turns and reload, then admits 
 		},
 		fauxAssistantMessage("next"),
 		fauxAssistantMessage("verify"),
+		fauxAssistantMessage("still verify"),
 	]);
 	await harness.session.prompt("inspect this");
+	await harness.session.prompt("/decision-phase investigate");
+	expect(
+		harness.sessionManager
+			.getBranch()
+			.filter((entry) => entry.type === "custom" && entry.customType === "decision-phase"),
+	).toHaveLength(0);
 	await harness.session.reload();
 	await harness.session.prompt("more work in same phase");
 	expect(requests).toHaveLength(1);
@@ -122,6 +129,23 @@ it("pins routing across real tool turns, new user turns and reload, then admits 
 	expect(requests).toHaveLength(2);
 	expect(requests[1].features.phase).toBe("verify");
 	expect(requests[1].features.history).not.toEqual([]);
+	await harness.session.prompt("/decision-phase verify");
+	await harness.session.prompt("same verify phase");
+	expect(requests).toHaveLength(2);
+});
+
+it("does not finance switches with hypothetical target cache hits", () => {
+	expect(
+		estimateRoutingCosts({
+			promptTokens: 1000000,
+			cachedTokens: 1000000,
+			requests: 3,
+			outputTokens: 0,
+			current: { input: 10, cacheRead: 1, cacheWrite: 10, output: 0 },
+			target: { input: 2, cacheRead: 0.01, cacheWrite: 2, output: 0 },
+			decisionCostUsd: 0,
+		}),
+	).toEqual({ stay: 3, switch: 6 });
 });
 
 it("does not apply stale proposals", async () => {

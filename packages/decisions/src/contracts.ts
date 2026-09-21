@@ -58,5 +58,6 @@ export interface DecisionInvocation {
 	policyDigest: string;
 	elapsedMs: number;
 	requestCount: number;
+	tokenCount: number | null;
 	costUsd: number | null;
 }

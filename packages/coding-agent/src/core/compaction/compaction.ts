@@ -601,6 +601,19 @@ export async function completeSummarization(
 	retry?: RetryPolicy,
 	callbacks?: RetryCallbacks,
 ): Promise<AssistantMessage> {
+	// Shared by history, split-turn and branch summaries. Reject before any provider
+	// call or retry; never silently truncate the history that a checkpoint replaces.
+	const inputEstimate = Math.ceil(Buffer.byteLength(JSON.stringify(context), "utf8") / 3);
+	const outputReserve = options.maxTokens ?? model.maxTokens;
+	const safetyMargin = Math.max(256, Math.ceil(model.contextWindow * 0.05));
+	if (
+		!Number.isFinite(inputEstimate + outputReserve + safetyMargin) ||
+		outputReserve <= 0 ||
+		inputEstimate + outputReserve + safetyMargin > model.contextWindow
+	)
+		throw new Error(
+			"Summary request exceeds the estimated context budget; use a larger-context model or reduce the summary scope. History was not discarded.",
+		);
 	// Avoid cache writes for one-off summaries. Reuse caller-supplied routing when available;
 	// callers without a session ID, including branch summaries, receive a fresh routing ID.
 	const requestOptions: SimpleStreamOptions = {

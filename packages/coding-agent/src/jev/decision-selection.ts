@@ -40,6 +40,7 @@ export function createDecisionSkillSelector(options: { evaluate: DecisionCompone
 			return true;
 		}
 		const revision = context.sessionManager.getLeafId() ?? "initial";
+		let invocation: Awaited<ReturnType<DecisionComponentsOptions["evaluate"]>>["invocation"];
 		const selected = await selectDecisionSkills(
 			roster,
 			explicit,
@@ -53,12 +54,20 @@ export function createDecisionSkillSelector(options: { evaluate: DecisionCompone
 					contextTokens: context.getContextUsage()?.tokens ?? null,
 				},
 			},
-			options.evaluate,
+			async (request, signal) => {
+				const result = await options.evaluate(request, signal);
+				invocation = result.invocation;
+				return result;
+			},
 			event.signal,
 		);
 		if (event.signal?.aborted || (context.sessionManager.getLeafId() ?? "initial") !== revision) return false;
 		try {
-			pi.appendEntry("decision-skills", { phase: phaseKey, ids: selected.map((skill) => skill.name) });
+			pi.appendEntry("decision-skills", {
+				phase: phaseKey,
+				ids: selected.map((skill) => skill.name),
+				...(invocation ? { invocation } : {}),
+			});
 		} catch {
 			return false;
 		}

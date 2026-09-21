@@ -41,10 +41,13 @@ Jev replaces selected **judgments**, not the execution engine. Pi still builds p
 | Tool review | Review a proposed call and optionally block it before execution; `request_review` blocks with an explanation, not an approval dialog | Existing tool-call path |
 | Completion | Inspect the final result and recent evidence; request bounded verification or clarification through the existing follow-up queue | End the run normally |
 | Context | Score historical tool calls/results and select a recoverable view within an estimated budget **before prompt construction**; optional cache-aware reuse; selection also precedes manual/overflow compaction | Existing Pi context and summarization |
+| Recovery | Classify failed configured tools as `continue`, `inspect` or `clarify`; append fixed guidance without replaying the action | Original error result |
+| Evidence | `verify_evidence` judges a claim against existing successful text tool-result IDs: `supports`, `contradicts`, `insufficient` | No evidence-classification tool |
+| Specialists | `consult_specialist` selects an approved model/effort/instruction preset for one isolated, tool-free consultation | No specialist tool |
 
 Routing and skill selection share one phase owner. Ordinary turns and retries do not trigger model switching. Model, effort and tools commit together in memory after authorization/freshness checks; later user or extension changes take precedence. This is not a transactional disk commit. See [ADR 2](docs/adr/0002-phase-boundaries-and-host-authority.md).
 
-Cache estimates compare future stay/switch cost, charging a cold target once. Tool/effort changes are conservatively treated as cache-breaking. Prices come from the model registry; expected remaining work and margins are configurable estimates, not measured savings. Smaller-window candidates require enabled context management and a preliminary feasibility floor. Context selection then checks the selected model's estimated budget before prompt construction; the floor does not guarantee that relevant evidence will fit.
+Repeating `/decision-phase` with the current phase is a no-op. Cache admission compares a favorable stay estimate against an all-cold target estimate across the configured horizon; hypothetical target cache hits cannot justify switching. Tool/effort changes are conservatively treated as cache-breaking. Prices come from the model registry; expected work, classifier overhead and margins remain operator-supplied estimates, not guaranteed savings. Smaller-window candidates require enabled context management and a preliminary feasibility floor. Context selection then checks the selected model's estimated budget before prompt construction.
 
 ### Runtime modes
 
@@ -52,7 +55,7 @@ Cache estimates compare future stay/switch cost, charging a cold target once. To
 |---|---|
 | `off` | Default. No decision inference or routing. Local recall remains available on resumed branches containing previously reduced output. |
 | `decisions` | Shared registry, phase/cache-aware routing and individually enabled components. Baseline/heuristic implementations need no Jev key. |
-| `route` | Legacy `fast`/`standard`/`deep`/`research` task classifier and partial route profiles. Does **not** have the new phase/cache guarantees. |
+| `route` | Migration alias for `decisions` when `jev.decisions` is supplied. Old partial profiles alone no longer route; with a key they report a migration warning. |
 
 ### Start with routing, without remote decisions
 
@@ -193,7 +196,7 @@ Place that under `jev.decisions`, keeping the context binding above. With cache 
 
 Input capacity subtracts the host/model output reservation and `safetyMarginTokens`; `reserveOutputTokens` can raise the reservation. Pre-construction admission counts source messages/tool declarations plus estimated overhead from raw prompt configuration. It uses a UTF-8-size heuristic, **not an exact provider tokenizer**. `targetRatio` is a soft target; the estimated capacity is enforced. Insufficient selection falls back to existing Pi summarization once and re-plans before building the prompt. Oversized protected content stops preparation rather than being silently deleted.
 
-There is deliberately **no post-construction capacity gate**. Rendered overhead, late steering messages and trusted extension/payload edits can exceed the estimate; ordinary provider overflow recovery remains the fallback. Late input stays intact rather than being delayed or dropped. The legacy summarizer's own request also remains outside this estimate. [ADR 4](docs/adr/0004-context-window-management.md) explains both cache modes and these tradeoffs; [ADR 5](docs/adr/0005-decision-responsibility-map.md) documents inputs, outputs and Pi/Jev responsibilities for every decision area.
+There is deliberately **no post-construction generation capacity gate**. Rendered overhead, late steering messages and trusted extension/payload edits can exceed the estimate; ordinary provider overflow recovery remains the fallback. Late input stays intact. Separately, every history, split-turn and branch summarization request now checks serialized UTF-8 size/3 plus output reservation and a 5% context margin (minimum 256 tokens) before provider execution. Oversized summaries fail without discarding history. Neither estimate is an exact tokenizer. [ADR 4](docs/adr/0004-context-window-management.md) explains the tradeoffs; [ADR 5](docs/adr/0005-decision-responsibility-map.md) maps responsibilities.
 
 Optional limits are `stateChars` (48000), `requestChars` (80000), `maxRequests` (8), `concurrency` (2), and `minReduction` (0.1). These are bounded projection/request estimates, not a tokenizer guarantee for Jev. Context batches share `maxComponentDecisions` with other configured components. Rubrics and these numerical settings are configurable for offline calibration; `keepThreshold` applies raw scores, not the adapter's selection-only `minProbability`. See [ADR 4](docs/adr/0004-context-window-management.md).
 
@@ -211,7 +214,7 @@ Disable individual components by removing their key from `components`; `"skills"
 
 Restart or use normal resource reload after settings changes. Reload resolves trusted settings again; it is not a filesystem watcher or automatic optimizer promotion. Existing phase records prevent another routing decision within the same phase. Turning decisions off stops new decisions, but does not undo an already selected model/tool preset or rewrite saved output. Select your desired model/tools normally; `recall_output` remains local and branch-scoped for saved originals, subject to host tool restrictions.
 
-Legacy `route` mode uses `jev.routes` profiles with optional `provider`+`model`, `thinkingLevel`, and `tools`; it is separate from the complete presets above. Removed `shadow` mode does not make Jev calls.
+Migrate legacy `jev.routes` to complete `jev.decisions.routing.routes` presets; partial profiles are not applied. Removed `shadow` mode does not make Jev calls.
 
 ### Reuse the library or supply a plugin
 
@@ -243,7 +246,7 @@ Use one installation path: the configured built-in integration, or your extensio
 
 Custom SDK resource loaders own their extensions. With `DefaultResourceLoader`, use `finalExtensionFactories: () => createConfiguredJevExtensions(settingsManager.getJevSettings(), cwd)` from `@earendil-works/pi-coding-agent/jev` to get the same post-trust behavior. Ordinary `createAgentSession()` and CLI startup already do this.
 
-Low-level `AgentHarness` applications use [`createDecisionGenerationRouter`](packages/coding-agent/src/jev/decision-durable.ts) with their own private snapshot, candidate roster and admission callback. The selected configuration is checkpointed before the provider request and passed to the prompt callback. Those applications own durable phase/policy persistence; this separate API is not the normal CLI routing path. Custom retrieval backends can use [`selectRetrievedContext`](packages/coding-agent/src/jev/decision-selection.ts) with their own excerpts/token budgets; built-in `grep`/`find` need no such wiring.
+Low-level `AgentHarness` applications use [`createDecisionGenerationRouter`](packages/coding-agent/src/jev/decision-durable.ts) with their private snapshot, candidate roster and admission callback. Pass an existing disk-backed `SessionManager` as `persistence` and a stable admitted phase identity as `request.boundaryId`: reservations pin that lane/phase across adapter restarts, including interrupted decisions, and record policy/roster digests and invocation metadata. The driver still checkpoints the applied configuration. Hosts must use the correct session branch and ignore decision audit entries in freshness checks; omitting `persistence` leaves this responsibility with the host. Custom retrieval backends use [`selectRetrievedContext`](packages/coding-agent/src/jev/decision-selection.ts).
 
 ### Learn policies, not authority
 
@@ -257,7 +260,15 @@ node --experimental-strip-types packages/decisions/examples/learning-roundtrip.t
 
 Decision traces are metadata-only by default, but inference receives bounded task/tool text, and exact output recovery stores originals in the local session. These are not automatic secret redaction. Replay capture requires separate consent and redaction. Synthetic checks validate plumbing, not Jev quality, savings or GEPA effectiveness.
 
-Arbitrary dialogue pruning, semantic recovery and specialist dispatch remain unimplemented; tool-history selection is implemented as described above. See the [decision-point review](docs/jev-decision-points.md). Provider-backed experiments and optimizer runs are explicit [TODOs](docs/jev-experiments.md), not prerequisites hidden behind the enablement examples above.
+### Recovery, evidence and specialist configuration
+
+See [workflow configuration and limits](docs/jev-workflows.md) and [ADR 6](docs/adr/0006-bounded-workflows-and-gap-closure.md) for complete examples. Each workflow requires its matching binding and component setting. Baseline implementations make no Jev calls: recovery continues unchanged, evidence returns `insufficient`, and specialists select `none`. Switching that binding to `jev.typed` enables finite semantic selection.
+
+Evidence and specialist tools accept `{ "task": "claim or subtask", "sourceIds": ["existing-tool-call-id"] }`. They reject unknown, failed, non-text and classifier/consultation sources. Specialist execution is one bounded provider request with no child tools, no recursion and no main-route change. Workflow allowances are reserved on the branch before inference. Add enabled tool names to routing presets that should expose them.
+
+Component and skill records now retain implementation/version, input/policy digests, elapsed time, request/token counts and reported cost. Unknown tokens/cost remain `null`. Inputs/provider evidence are excluded from these metadata records; originals remain local session content.
+
+Arbitrary dialogue pruning and autonomous tool-using specialist trees remain outside this implementation. Evidence labels and specialist prose are advisory, not verified facts. Provider-backed experiments and optimizer runs remain explicit [TODOs](docs/jev-experiments.md).
 
 ## All Packages
 

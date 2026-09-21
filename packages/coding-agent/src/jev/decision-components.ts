@@ -1,11 +1,19 @@
-import type { Candidate, DecisionRequest, DecisionResult, Json } from "@earendil-works/pi-decisions";
+import type {
+	Candidate,
+	DecisionInvocation,
+	DecisionRequest,
+	DecisionResult,
+	Json,
+} from "@earendil-works/pi-decisions";
 import { digestJson } from "@earendil-works/pi-decisions";
 import { Type } from "typebox";
 import type { ExtensionContext, InlineExtension, ToolDefinition } from "../core/extensions/types.ts";
 
+export type ComponentDecision = DecisionResult & { invocation?: Omit<DecisionInvocation, "result"> };
+
 export interface DecisionComponentsOptions {
 	/** The trusted host owns approved feature projection and any redaction before remote evaluation. */
-	evaluate(request: DecisionRequest, signal?: AbortSignal): Promise<DecisionResult>;
+	evaluate(request: DecisionRequest, signal?: AbortSignal): Promise<ComponentDecision>;
 	output?: { tools: string[]; minChars: number; maxChars: number; blockLines: number; minReduction: number };
 	retrieval?: { minChars: number; maxChars: number; minReduction: number };
 	review?: { tools: string[]; onFailure: "block" | "proceed" };
@@ -26,6 +34,7 @@ export interface DecisionComponentRecord {
 	effectiveAction: "unchanged" | "trim" | "proceed" | "block" | "accept" | "verify" | "clarify";
 	fallback?: string;
 	durationMs: number;
+	invocation?: Omit<DecisionInvocation, "result">;
 }
 
 const ORIGINAL_OUTPUT = "decision-original-output/v1";
@@ -253,7 +262,7 @@ export function createDecisionComponentsExtension(options: DecisionComponentsOpt
 					}
 					if (candidates.length > 255 || candidates.every((candidate) => candidate.attributes.required)) return;
 					const started = performance.now();
-					let result: DecisionResult = { status: "failed", reason: "evaluation_failed" };
+					let result: ComponentDecision = { status: "failed", reason: "evaluation_failed" };
 					const definition = retrieval ? "retrieval.rank/v1" : "output.select/v1";
 					const selected = new Set(
 						await selectDecisionContext(
@@ -274,6 +283,7 @@ export function createDecisionComponentsExtension(options: DecisionComponentsOpt
 						outcome: result.status,
 						effectiveAction: "unchanged",
 						durationMs: performance.now() - started,
+						...(result.invocation ? { invocation: result.invocation } : {}),
 					};
 					if (context.signal?.aborted || componentRevision(context) !== snapshot.stateRevision) {
 						record({ ...trace, fallback: "cancelled_or_stale" }, false);
@@ -325,6 +335,7 @@ export function createDecisionComponentsExtension(options: DecisionComponentsOpt
 					let outcome: DecisionResult["status"] = "failed";
 					let fallback: string | undefined = "evaluation_failed";
 					let selected = options.review.onFailure === "block" ? "block" : "proceed";
+					let invocation: ComponentDecision["invocation"];
 					try {
 						const result = await options.evaluate(
 							{
@@ -345,6 +356,7 @@ export function createDecisionComponentsExtension(options: DecisionComponentsOpt
 							context.signal,
 						);
 						outcome = result.status;
+						invocation = result.invocation;
 						fallback = result.status === "proposed" ? "invalid_answer" : result.status;
 						if (
 							result.status === "proposed" &&
@@ -367,6 +379,7 @@ export function createDecisionComponentsExtension(options: DecisionComponentsOpt
 						effectiveAction: selected === "proceed" ? "proceed" : "block",
 						...(fallback ? { fallback } : {}),
 						durationMs: performance.now() - started,
+						...(invocation ? { invocation } : {}),
 					};
 					if (context.signal?.aborted || componentRevision(context) !== snapshot.stateRevision) {
 						record({ ...trace, effectiveAction: "block", fallback: "cancelled_or_stale" }, false);
@@ -417,6 +430,7 @@ export function createDecisionComponentsExtension(options: DecisionComponentsOpt
 					const started = performance.now();
 					let outcome: DecisionResult["status"] = "failed";
 					let fallback: string | undefined = failed ? "failed_checks" : "evaluation_failed";
+					let invocation: ComponentDecision["invocation"];
 					try {
 						const result = await options.evaluate(
 							{
@@ -433,6 +447,7 @@ export function createDecisionComponentsExtension(options: DecisionComponentsOpt
 							context.signal,
 						);
 						outcome = result.status;
+						invocation = result.invocation;
 						if (!failed) fallback = result.status === "proposed" ? "invalid_answer" : result.status;
 						if (
 							!failed &&
@@ -456,6 +471,7 @@ export function createDecisionComponentsExtension(options: DecisionComponentsOpt
 						effectiveAction: "accept",
 						...(fallback ? { fallback } : {}),
 						durationMs: performance.now() - started,
+						...(invocation ? { invocation } : {}),
 					};
 					if (
 						context.hasPendingMessages() ||
@@ -530,13 +546,20 @@ function componentSnapshot(context: ExtensionContext, options: DecisionComponent
 	};
 }
 
-function componentRevision(context: ExtensionContext): string {
+export function componentRevision(context: ExtensionContext): string {
 	return (
 		[...context.sessionManager.getBranch()]
 			.reverse()
 			.find(
 				(entry) =>
-					entry.type !== "custom" || ![ORIGINAL_OUTPUT, "decision-component/v1"].includes(entry.customType),
+					entry.type !== "custom" ||
+					![
+						ORIGINAL_OUTPUT,
+						"decision-component/v1",
+						"decision-workflow",
+						"decision-workflow-reservation",
+						"decision-specialist-usage",
+					].includes(entry.customType),
 			)?.id ?? "initial"
 	);
 }

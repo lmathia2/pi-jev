@@ -6,6 +6,8 @@ import type {
 	InvocationOptions,
 	ResolvedPolicy,
 } from "@earendil-works/pi-decisions";
+import { digestJson } from "@earendil-works/pi-decisions";
+import type { SessionManager } from "../core/session-manager.ts";
 
 type GenerationEvent = Parameters<HookHandler<"before_generation">>[0];
 type GenerationContext = Parameters<HookHandler<"before_generation">>[1];
@@ -15,6 +17,8 @@ export interface DurableDecisionRouterOptions {
 	policy: ResolvedPolicy;
 	routes: Readonly<Record<string, LaneConfiguration>>;
 	invocation?: Omit<InvocationOptions, "signal">;
+	/** Use the host's existing durable session; branch history owns reservations across restarts. */
+	persistence?: Pick<SessionManager, "getBranch" | "appendCustomEntry" | "flush">;
 	/** Host owns admitted phases and branch/restart state; undefined keeps its current route. */
 	buildRequest(
 		event: GenerationEvent,
@@ -45,6 +49,25 @@ export function createDecisionGenerationRouter(
 			context.abortSignal?.aborted
 		)
 			return undefined;
+		const phaseKey = `${event.lane}:${request.boundaryId}`;
+		if (
+			options.persistence
+				?.getBranch()
+				.some(
+					(entry) =>
+						entry.type === "custom" &&
+						entry.customType === "durable-decision-reservation" &&
+						(entry.data as { phaseKey?: string })?.phaseKey === phaseKey,
+				)
+		)
+			return undefined;
+		// Reserve before inference. A crash pins the driver's recovered configuration rather than re-deciding.
+		options.persistence?.appendCustomEntry("durable-decision-reservation", {
+			phaseKey,
+			policyDigest: policy.digest,
+			routesDigest: digestJson(routes),
+		});
+		options.persistence?.flush();
 		const invocation = await options.registry.invoke(
 			policy.artifact.implementation,
 			request,
@@ -55,6 +78,12 @@ export function createDecisionGenerationRouter(
 			},
 		);
 		const result = invocation.result;
+		const { result: _result, ...metadata } = invocation;
+		options.persistence?.appendCustomEntry("durable-decision-invocation", {
+			phaseKey,
+			invocation: metadata,
+			outcome: result.status,
+		});
 		if (result.status !== "proposed" || result.answer.kind !== "select" || context.abortSignal?.aborted)
 			return undefined;
 		const selectedId = result.answer.candidateId;

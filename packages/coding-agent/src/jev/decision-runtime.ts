@@ -24,6 +24,7 @@ import {
 	type DecisionRoutingSettings,
 } from "./decision-routing.ts";
 import { createDecisionSkillSelector } from "./decision-selection.ts";
+import { createDecisionWorkflowsExtension, type DecisionWorkflowSettings } from "./decision-workflows.ts";
 
 export interface DecisionSettings {
 	policyPackages?: string[];
@@ -33,10 +34,11 @@ export interface DecisionSettings {
 	policyReferences?: Record<string, string>;
 	bindings?: Record<string, DecisionBinding>;
 	routing?: DecisionRoutingSettings;
-	components?: Pick<DecisionComponentsOptions, "output" | "retrieval" | "review" | "completion"> & {
-		skills?: boolean;
-		context?: ContextManagementSettings;
-	};
+	components?: Pick<DecisionComponentsOptions, "output" | "retrieval" | "review" | "completion"> &
+		DecisionWorkflowSettings & {
+			skills?: boolean;
+			context?: ContextManagementSettings;
+		};
 	timeoutMs?: number;
 	maxComponentDecisions?: number;
 }
@@ -100,7 +102,18 @@ export function createConfiguredDecisionExtension(
 		if (
 			settings.components &&
 			Object.keys(settings.components).some(
-				(key) => !["output", "retrieval", "review", "completion", "skills", "context"].includes(key),
+				(key) =>
+					![
+						"output",
+						"retrieval",
+						"review",
+						"completion",
+						"skills",
+						"context",
+						"recovery",
+						"evidence",
+						"specialists",
+					].includes(key),
 			)
 		)
 			throw new Error("Unknown decision component");
@@ -141,6 +154,9 @@ export function createConfiguredDecisionExtension(
 			["review", "tools.review/v1"],
 			["completion", "completion.verify/v1"],
 			["context", "context.retention/v1"],
+			["recovery", "recovery.action/v1"],
+			["evidence", "evidence.verify/v1"],
+			["specialists", "specialist.select/v1"],
 		] as const) {
 			if (settings.components?.[component] && !bindings[definition])
 				throw new Error(`Missing enabled component binding: ${definition}`);
@@ -153,10 +169,16 @@ export function createConfiguredDecisionExtension(
 		const evaluate: DecisionComponentsOptions["evaluate"] = async (request, signal) => {
 			const binding = bindings[request.definition];
 			if (!binding) return { status: "abstained", reason: "disabled" };
-			return (await registry.invoke(binding.implementation, request, binding.policy, { signal, timeoutMs, budget }))
-				.result;
+			const { result, ...invocation } = await registry.invoke(binding.implementation, request, binding.policy, {
+				signal,
+				timeoutMs,
+				budget,
+			});
+			return { ...result, invocation };
 		};
 		const extensions: InlineExtension[] = [];
+		if (settings.components?.recovery || settings.components?.evidence || settings.components?.specialists)
+			extensions.push(createDecisionWorkflowsExtension(settings.components, evaluate));
 		if (settings.components?.context) {
 			extensions.push(createContextRecallExtension({ maxChars: settings.components.context.recallMaxChars }));
 			extensions.push(

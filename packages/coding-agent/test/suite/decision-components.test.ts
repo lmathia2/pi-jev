@@ -333,6 +333,7 @@ describe("decision components", () => {
 								? { status: "proposed", answer: { kind: "select", candidateId: "keep_current" } }
 								: {
 										status: "proposed",
+										usage: { requests: 1, tokens: 17, costUsd: 0.0001 },
 										answer: {
 											kind: "subset",
 											candidateIds: request.definition === "skills.select/v1" ? ["wanted"] : [],
@@ -376,6 +377,25 @@ describe("decision components", () => {
 				.filter(Boolean),
 		).toEqual([]);
 		expect(calls).toEqual(["skills.select/v1", "generation.route/v1", "retrieval.rank/v1"]);
+		for (const type of ["decision-skills", "decision-component/v1"]) {
+			const entry = harness.sessionManager
+				.getBranch()
+				.find((entry) => entry.type === "custom" && entry.customType === type);
+			expect(entry).toMatchObject({
+				data: {
+					invocation: {
+						implementationId: "fixture",
+						implementationVersion: "1",
+						policyDigest: expect.any(String),
+						inputDigest: expect.any(String),
+						elapsedMs: expect.any(Number),
+						costUsd: 0.0001,
+						tokenCount: 17,
+						requestCount: 1,
+					},
+				},
+			});
+		}
 		expect(getMessageText(harness.session.messages.find((message) => message.role === "toolResult"))).toContain(
 			"Output reduced",
 		);

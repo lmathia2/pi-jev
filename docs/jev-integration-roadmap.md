@@ -6,6 +6,8 @@ The [decision-library design](decision-library-design.md) defines the reusable p
 
 ## Implementation checkpoint
 
+2026-09-21 gap closure: same-phase commands are idempotent; legacy settings cannot bypass guarded routing; target cache hits no longer finance switches; full invocation metadata survives component/skill adapters; bounded recovery, source-evidence and specialist consultations are wired. Summary requests now have shared admission, and durable routing can persist reservations in the host session. See [ADR 6](adr/0006-bounded-workflows-and-gap-closure.md) and [configuration](jev-workflows.md). Later phase descriptions retain original acceptance goals, not promises that live measurements have been performed.
+
 The [implementation log](jev-implementation-log.md) records code and verification. The [experiment queue](jev-experiments.md) separates correctness checks from useful-behavior measurements.
 
 - Foundation: `packages/decisions` now supplies implementation plugins, validated proposals, data-only policy manifests, offline paired comparison, consented JSONL capture/export, strict jev-align text conversion, numeric calibration and explicit promotion/rollback helpers.
@@ -16,7 +18,7 @@ The [implementation log](jev-implementation-log.md) records code and verificatio
 - Tool-history context: preconstruction `context_management` shares one planner across dispatch, manual compaction and overflow. Independent `context.retention/v1` call/result probabilities drive configurable keep/excerpt/omit decisions over complete tool interactions. User/assistant text is unchanged; exact originals remain discoverable through recall. Existing summaries are the fallback when reduction is insufficient. Estimated total-budget admission occurs before rendering; no postconstruction gate guarantees fit.
 - Learning: offline functions and synthetic checks are implemented; actual GEPA runs, dataset review, calibration from real sessions and live promotion have not been performed. A candidate's own metrics cannot satisfy the operator's release gate.
 
-The phases below retain component acceptance checks, not a claim that every measurement passed. Automatic policy reload, provider-specific cache-survival calibration, research-evidence classification and the explicitly deferred work remain outside the delivered scope. Full repository checking is blocked by existing AI model-catalogue errors; focused checks do not establish production readiness.
+The phases below retain acceptance checks, not a claim that every measurement passed. Automatic policy reload, provider-specific cache calibration and the explicitly deferred work remain outside the delivered scope. Repository checking now passes; offline tests do not establish production readiness or semantic quality.
 
 ## Goal
 
@@ -247,7 +249,7 @@ Keep this separate from routing and quality review so a failure cannot disable u
 ## Deferred work
 
 - Arbitrary user/assistant-text pruning: remains outside the limited tool-history provider projection and requires convincing real-session evidence.
-- Automatic specialist dispatch: wait until specialist lifecycle, isolation, and budgets exist independently of Jev.
+- Autonomous tool-using specialist trees: remain deferred. Bounded tool-requested, single-call consultations with an approved roster and budgets are implemented.
 - Prompt grading or rewriting: useful as a user-facing extension, not a core harness responsibility.
 - Multi-model deliberation: remains an extension; it is not required for bounded harness decisions.
 - Automatic extension installation: Jev selection does not establish trust in third-party code.

@@ -1,5 +1,24 @@
 # Jev implementation log
 
+## 2026-09-21: close implementation gaps
+
+Branch: `codex/close-decision-gaps`. This checkpoint supersedes the earlier remaining-work statements below.
+
+- Repeated same-phase commands do not append new boundaries or reroute.
+- Configured legacy `route` uses the guarded runtime with `decisions`; old partial profiles alone remain unapplied with a migration diagnostic.
+- Switch admission prices all target input cold rather than assuming future target cache hits. Current-cache reuse remains a favorable stay estimate; configured work/output/decision overhead are still estimates.
+- Component and skill traces retain implementation/version, input/policy digests, latency, request/token counts and known/unknown cost.
+- Added opt-in finite recovery guidance, source-ID evidence classification and approved single-request tool-free specialist consultations. Task allowances persist before inference; validation/cancellation/staleness and estimated specialist cost/context limits remain host-owned.
+- Durable adapters accept the existing host session as `persistence`, recording lane/phase reservations and policy/roster digests before inference. Explicit `SessionManager.flush()` fixes lazy first-response persistence; disk reopen is regression-tested before inference. The driver still owns applied configuration; host phase/admission callbacks remain required.
+- Every summary call checks estimated input/output/margin before provider invocation. Oversized histories fail without silent truncation or deletion.
+- README, responsibility map, context/routing ADRs, roadmap and new [ADR 6](adr/0006-bounded-workflows-and-gap-closure.md)/[workflow guide](jev-workflows.md) reflect the code.
+
+Final verification: 174 coding-agent/session/compaction tests and 22 decision-library tests passed (196 total). Two live summarization tests were explicitly skipped with their credential gate unset. `npm run check` passed including TypeScript and browser smoke; `git diff --check` passed. Coverage includes same-phase no-op, legacy guarded alias, full trace metadata, invalid/stale/over-budget specialist rejection, source provenance, bounded recovery, summary admission, and disk reopen before durable inference. Existing npm `min-release-age` compatibility warnings remain; the security setting was not removed. No live experiments, dependency changes or paid provider calls.
+
+Remaining limits are explicit: semantic quality and real cache/cost calibration require experiments; consultations do not execute tools; evidence labels are advisory; exact provider tokenizers/chunked summaries and automatic policy promotion are not implemented. The new paths reuse existing registry, tool, session and provider infrastructure.
+
+## Earlier implementation history
+
 Implementation branch: `codex/jev-decision-library`; isolated merge branch: `codex/jev-merge`. No live inference or optimizer spending was performed. Unrelated worktree changes were preserved.
 
 This implements the reusable foundation and opt-in adapters from the six-step [decision-library design](decision-library-design.md). It does not claim that all integrations in the historical roadmap are production-enabled. Remaining host integrations and experiments are explicit below and in [the experiment queue](jev-experiments.md).

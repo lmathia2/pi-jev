@@ -2,6 +2,8 @@
 
 Status: accepted. Date: 2026-09-20.
 
+Updated 2026-09-21: [ADR 6](0006-bounded-workflows-and-gap-closure.md) makes same-phase commands idempotent, removes the configured legacy bypass, prices all target inputs cold, and adds optional durable session reservations. Target cache reuse is never assumed for switch admission. Hosts supplying `persistence` retain lane/phase and policy/roster identity across restarts; host snapshot/admission callbacks remain authoritative.
+
 ## Problem
 
 Selecting a model after rendering its prompt is too late: tool schemas, skill visibility and model-specific instructions may already reflect the previous choice. Switching every turn also repeatedly pays for a cold prompt cache.
