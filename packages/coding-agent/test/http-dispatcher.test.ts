@@ -90,7 +90,7 @@ describe("http dispatcher", () => {
 		vi.restoreAllMocks();
 	});
 
-	it("tunnels proxied HTTP origins", async () => {
+	it("tunnels global fetch through an authenticated proxy and honors NO_PROXY", async () => {
 		const origin = http.createServer((_request, response) => {
 			response.end("origin");
 		});
@@ -105,6 +105,12 @@ describe("http dispatcher", () => {
 			client.once("data", (data) => {
 				const [requestLine = ""] = data.toString().split("\r\n");
 				proxyRequestLines.push(requestLine);
+				if (!data.toString().toLowerCase().includes("proxy-authorization: basic ywdlbnq6dgvzdc1vbmx5")) {
+					client.end(
+						"HTTP/1.1 407 Proxy Authentication Required\r\ncontent-length: 0\r\nconnection: close\r\n\r\n",
+					);
+					return;
+				}
 				if (!requestLine.startsWith("CONNECT ")) {
 					client.end("HTTP/1.1 501 Not Implemented\r\ncontent-length: 0\r\nconnection: close\r\n\r\n");
 					return;
@@ -124,19 +130,23 @@ describe("http dispatcher", () => {
 			throw new Error("Proxy did not bind to a TCP port");
 		}
 
-		process.env.HTTP_PROXY = `http://127.0.0.1:${proxyAddress.port}`;
+		process.env.HTTP_PROXY = `http://agent:test-only@127.0.0.1:${proxyAddress.port}`;
 		configureHttpDispatcher();
 		const dispatcher = undici.getGlobalDispatcher();
 		try {
 			const originUrl = `http://127.0.0.1:${originAddress.port}/v1/chat/completions`;
-			await expect(undici.fetch(originUrl).then((response) => response.text())).resolves.toBe("origin");
-			await expect(undici.fetch(originUrl).then((response) => response.text())).resolves.toBe("origin");
+			await expect(fetch(originUrl).then((response) => response.text())).resolves.toBe("origin");
+			await expect(fetch(originUrl).then((response) => response.text())).resolves.toBe("origin");
 			expect(proxyRequestLines).not.toHaveLength(0);
 			expect(proxyRequestLines).toEqual(
 				expect.arrayContaining([
 					expect.stringMatching(`^CONNECT 127\\.0\\.0\\.1:${originAddress.port} HTTP/1\\.1$`),
 				]),
 			);
+			const proxiedCount = proxyRequestLines.length;
+			process.env.NO_PROXY = "127.0.0.1";
+			await expect(fetch(originUrl).then((response) => response.text())).resolves.toBe("origin");
+			expect(proxyRequestLines).toHaveLength(proxiedCount);
 		} finally {
 			await dispatcher.close();
 			undici.setGlobalDispatcher(originalDispatcher);

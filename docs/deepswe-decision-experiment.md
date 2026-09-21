@@ -134,14 +134,20 @@ Clone Pier and DeepSWE separately, checkout the revisions above, and install Pie
 After reviewing and committing the experiment code, prepare the runtime **from that clean commit**, not a working tree with keys or local data:
 
 ```sh
-git archive --format=tar HEAD -o /tmp/pi-jev-source.tar
-docker build --platform linux/amd64 -f evals/deepswe/Dockerfile.runtime -t pi-jev-eval-runtime - < /tmp/pi-jev-source.tar
+bash scripts/create-source-archive.sh --version 0.85.1 --ref HEAD --out /tmp/pi-jev-source.tar.gz
+mkdir -p /tmp/pi-jev-eval-source
+tar -xzf /tmp/pi-jev-source.tar.gz -C /tmp/pi-jev-eval-source
+docker build --platform linux/amd64 -f evals/deepswe/Dockerfile.runtime -t pi-jev-eval-runtime /tmp/pi-jev-eval-source/pi-0.85.1
 docker create --name pi-jev-eval-export pi-jev-eval-runtime
 docker cp pi-jev-eval-export:/pi-jev-runtime.tgz /tmp/pi-jev-runtime.tgz
 shasum -a 256 /tmp/pi-jev-runtime.tgz
 ```
 
 The Dockerfile uses `npm ci --ignore-scripts`, the committed npm lock, and Node 22.19.0. Record/pin the resolved base image digest for the final experiment. Runtime source executes through the already-pinned tsx loader with the repo tsconfig; no published upstream Pi package replaces this fork. The export container is left available for inspection; remove it when done.
+
+Plain `git archive` is insufficient: provider JSON data is intentionally ignored by Git. The existing source-archive script adds only that snapshot, validates its hashes, and excludes working-tree secrets. The runtime build checks that snapshot and imports the experiment runner with networking disabled before packaging.
+
+The standalone runner initializes Pi's existing HTTP dispatcher before creating model clients. This makes both LLM and Jev fetch requests honor Pier's authenticated `HTTP_PROXY`/`HTTPS_PROXY` and `NO_PROXY` settings on Node 22.19.0. Do not disable the egress allowlist or TLS verification to fix connection errors. Rebuild the runtime archive after runner changes and record its new SHA; an older archive will still contain the old runner.
 
 Copy the JSON manifest and YAML to a private run directory. Fill the archive absolute path/digest, experiment absolute path and exact task IDs. Set `MODEL_API_KEY` and `TYPESAFE_API_KEY` in the host environment. Both keys are forwarded only by explicit `agent.env`; never print them or enable debug environment logging. The default allowlist is api.meta.ai + api.typesafe.ai. Update it if using a gateway. Then, **only after approving the run budget**:
 

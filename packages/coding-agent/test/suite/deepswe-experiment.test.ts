@@ -6,6 +6,7 @@ import { Type } from "typebox";
 import { afterEach, expect, it, vi } from "vitest";
 import { createLlmDecisions } from "../../examples/deepswe/llm-decisions.ts";
 import { type Experiment, runExperiment, settingsForArm } from "../../examples/deepswe/run.ts";
+import * as httpDispatcher from "../../src/core/http-dispatcher.ts";
 import { ModelRegistry } from "../../src/core/model-registry.ts";
 import { ModelRuntime } from "../../src/core/model-runtime.ts";
 import { InMemoryCodingAgentModelsStore } from "../../src/core/models-store.ts";
@@ -222,7 +223,11 @@ it.each([
 it.each(["llm", "jev"])("runs a complete offline %s session and captures replayable decisions", async (arm) => {
 	harness = await createHarness();
 	const model = harness.getModel();
-	vi.spyOn(ModelRuntime, "create").mockResolvedValue(harness.session.modelRuntime);
+	const configureDispatcher = vi.spyOn(httpDispatcher, "configureHttpDispatcher").mockImplementation(() => {});
+	vi.spyOn(ModelRuntime, "create").mockImplementation(async () => {
+		expect(configureDispatcher).toHaveBeenCalledExactlyOnceWith();
+		return harness!.session.modelRuntime;
+	});
 	harness.setResponses([fauxAssistantMessage("Done"), fauxAssistantMessage('{"c0":1,"c1":0,"c2":0}')]);
 	vi.stubEnv("TYPESAFE_API_KEY", "offline-test");
 	vi.spyOn(jevClient, "createJevClient").mockReturnValue(

@@ -5,6 +5,7 @@ import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import { getSupportedThinkingLevels } from "@earendil-works/pi-ai/compat";
 import { type DecisionImplementation, type DecisionResult, digestJson, type Json } from "@earendil-works/pi-decisions";
 import { createJevImplementation } from "@earendil-works/pi-decisions/jev";
+import { configureHttpDispatcher } from "../../src/core/http-dispatcher.ts";
 import { ModelRegistry } from "../../src/core/model-registry.ts";
 import { ModelRuntime } from "../../src/core/model-runtime.ts";
 import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
@@ -50,6 +51,8 @@ export async function runExperiment(
 	instruction: string,
 	output: string,
 ): Promise<void> {
+	// This standalone SDK runner bypasses Pi CLI setup. Honor Pier's egress proxy for both providers.
+	configureHttpDispatcher();
 	const decisions = settingsForArm(config.decisions, arm);
 	if (typeof config.routingEnabled !== "boolean" || typeof config.allowContributorDataUse !== "boolean")
 		throw new Error("Explicit routingEnabled and allowContributorDataUse required");

@@ -1,7 +1,9 @@
-# Build only from a clean git archive, never from a working directory containing secrets.
+# Build from create-source-archive.sh output, including validated provider data, never a working directory.
 FROM node:22.19.0-bookworm-slim
 WORKDIR /runtime
 COPY . .
 RUN npm ci --ignore-scripts
+RUN node packages/ai/scripts/check-model-data.ts
+RUN --network=none node --import tsx --input-type=module -e 'import "./packages/coding-agent/examples/deepswe/run.ts";'
 RUN cp /usr/local/bin/node /runtime/node
 RUN tar -czf /pi-jev-runtime.tgz -C /runtime .
